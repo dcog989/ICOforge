@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>WinExe</OutputType>
+        <TargetFramework>net8.0-windows10.0.17763.0</TargetFramework>
+        <UseWPF>true</UseWPF>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <ApplicationIcon>assets\icons\icoforge.ico</ApplicationIcon>
+        <Platforms>AnyCPU;x64</Platforms>
+        <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="SixLabors.ImageSharp" Version="3.1.10" />
+        <PackageReference Include="Svg.Skia" Version="3.0.3" />
+        <PackageReference Include="WPF-UI" Version="4.0.3" />
+        <PackageReference Include="Microsoft-WindowsAPICodePack-Shell" Version="1.1.5" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Resource Include="assets\icons\icoforge.ico" />
+        <Resource Include="assets\fonts\SourceCodePro-Bold.ttf" />
+        <Resource Include="assets\icons\paint-bucket.png" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Content Include="tools\oxipng.exe">
+            <Link>oxipng.exe</Link>
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+    </ItemGroup>
+
+    <ItemGroup>
+        <EmbeddedResource Include="favicon_template.html" />
+    </ItemGroup>
+
+</Project>
