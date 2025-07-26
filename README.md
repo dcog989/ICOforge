@@ -12,7 +12,7 @@ ICOforge is a Windows utility for converting various image formats into multi-re
 - **Theme Aware UI:** The application's interface automatically syncs with the Windows light or dark mode setting for a seamless, native feel.
 - **Modern & Simple Interface:** A clean, fluent user interface makes the conversion process intuitive.
 
-***
+---
 
 ## 🛠️ Tech Stack
 

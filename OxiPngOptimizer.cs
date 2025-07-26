@@ -55,8 +55,14 @@ namespace ICOforge
 
             string level = options.OptimizationLevel switch
             {
-                OxiPngOptimizationLevel.Max => "6",
-                _ => options.OptimizationLevel.ToString().ToLower().Replace("level", "")
+                OxiPngOptimizationLevel.Level0 => "0",
+                OxiPngOptimizationLevel.Level1 => "1",
+                OxiPngOptimizationLevel.Level2 => "2",
+                OxiPngOptimizationLevel.Level3 => "3",
+                OxiPngOptimizationLevel.Level4 => "4",
+                OxiPngOptimizationLevel.Level5 => "5",
+                OxiPngOptimizationLevel.Level6 or OxiPngOptimizationLevel.Max => "6",
+                _ => "4"
             };
             sb.Append($"-o {level} ");
 
@@ -71,7 +77,6 @@ namespace ICOforge
                 sb.Append($"--timeout {options.Timeout.Value.TotalSeconds} ");
             }
 
-            sb.Append("--threads 1 ");
             sb.Append("--quiet ");
             sb.Append($"\"{filePath}\"");
 

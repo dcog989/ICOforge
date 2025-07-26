@@ -3,6 +3,7 @@
     <PropertyGroup>
         <OutputType>WinExe</OutputType>
         <TargetFramework>net8.0-windows10.0.17763.0</TargetFramework>
+        <Version>1.0.7</Version>
         <UseWPF>true</UseWPF>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
@@ -17,14 +18,14 @@
 
     <ItemGroup>
         <PackageReference Include="SixLabors.ImageSharp" Version="3.1.10" />
-        <PackageReference Include="Svg.Skia" Version="3.0.3" />
+        <PackageReference Include="Svg.Skia" Version="3.0.4" />
         <PackageReference Include="WPF-UI" Version="4.0.3" />
         <PackageReference Include="Microsoft-WindowsAPICodePack-Shell" Version="1.1.5" />
     </ItemGroup>
 
     <ItemGroup>
         <Resource Include="assets\icons\icoforge.ico" />
-        <Resource Include="assets\fonts\SourceCodePro-Bold.ttf" />
+        <Resource Include="assets\fonts\SourceCodePro-Regular.ttf" />
         <Resource Include="assets\icons\paint-bucket.png" />
     </ItemGroup>
 
@@ -36,7 +37,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <EmbeddedResource Include="favicon_template.html" />
+        <EmbeddedResource Include="assets\favicon_template.html" />
     </ItemGroup>
 
 </Project>
