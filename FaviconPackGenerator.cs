@@ -1,5 +1,4 @@
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
+using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Text;
@@ -9,97 +8,70 @@ namespace ICOforge
     public class FaviconPackGenerator
     {
         private readonly IconConverterService _converterService;
+        private readonly OxiPngOptimizer _optimizer = new();
 
         public FaviconPackGenerator(IconConverterService converterService)
         {
             _converterService = converterService;
         }
 
-        public async Task CreateFromRasterAsync(Image<Rgba32> sourceImage, string outputDirectory, PngOptimizationOptions optimizationOptions)
+        public async Task CreateAsync(string filePath, List<int> icoSizes, string svgHexColor, PngOptimizationOptions optimizationOptions, string outputDirectory, IProgress<IconConversionProgress> progress)
         {
+            progress.Report(new IconConversionProgress { Percentage = 10, CurrentFile = "Creating directories..." });
             string iconsDir = Path.Combine(outputDirectory, "icons");
             Directory.CreateDirectory(iconsDir);
 
-            var pngTasks = new List<Task>
+            var sizesToGenerate = new[] { 128, 180, 256, 512 };
+            var pngTasks = new List<Task>();
+
+            progress.Report(new IconConversionProgress { Percentage = 20, CurrentFile = "Generating PNGs..." });
+            foreach (var size in sizesToGenerate)
             {
-                SavePngFromRasterAsync(sourceImage, 48, Path.Combine(iconsDir, "favicon-x48.png"), optimizationOptions),
-                SavePngFromRasterAsync(sourceImage, 96, Path.Combine(iconsDir, "favicon-x96.png"), optimizationOptions),
-                SavePngFromRasterAsync(sourceImage, 180, Path.Combine(iconsDir, "apple-touch-icon.png"), optimizationOptions),
-                SavePngFromRasterAsync(sourceImage, 192, Path.Combine(iconsDir, "favicon-x192.png"), optimizationOptions),
-                SavePngFromRasterAsync(sourceImage, 512, Path.Combine(iconsDir, "favicon-x512.png"), optimizationOptions)
-            };
+                string filename = size == 180 ? "apple-touch-icon.png" : $"favicon-x{size}.png";
+                string outputPath = Path.Combine(iconsDir, filename);
+                pngTasks.Add(CreateAndSavePngAsync(filePath, size, svgHexColor, outputPath, optimizationOptions));
+            }
             await Task.WhenAll(pngTasks);
 
-            await GenerateIcoFromRasterAsync(sourceImage, new List<int> { 16, 32 }, optimizationOptions, Path.Combine(outputDirectory, "favicon.ico"));
+            progress.Report(new IconConversionProgress { Percentage = 70, CurrentFile = "Generating ICO..." });
+            var icoOptions = new PngOptimizationOptions(false, 0);
+            await _converterService.ConvertImagesToIcoAsync(new List<string> { filePath }, icoSizes, svgHexColor, icoOptions, outputDirectory, new Progress<IconConversionProgress>());
+
+            progress.Report(new IconConversionProgress { Percentage = 80, CurrentFile = "Copying SVG..." });
+            if (Path.GetExtension(filePath).Equals(".svg", StringComparison.OrdinalIgnoreCase))
+            {
+                File.Copy(filePath, Path.Combine(iconsDir, "favicon.svg"), true);
+            }
+
+            progress.Report(new IconConversionProgress { Percentage = 90, CurrentFile = "Generating HTML..." });
             await SaveHtmlFileAsync(Path.Combine(outputDirectory, "index.html"));
         }
 
-        public async Task CreateFromSvgAsync(string sourceFilePath, string svgHexColor, string outputDirectory, PngOptimizationOptions optimizationOptions)
+        private async Task CreateAndSavePngAsync(string filePath, int size, string svgHexColor, string outputPath, PngOptimizationOptions optimizationOptions)
         {
-            string iconsDir = Path.Combine(outputDirectory, "icons");
-            Directory.CreateDirectory(iconsDir);
+            var pngData = await _converterService.CreatePngAsync(filePath, size, svgHexColor, optimizationOptions);
+            await File.WriteAllBytesAsync(outputPath, pngData);
 
-            var pngTasks = new List<Task>
+            var oxiOptions = new OxiPngOptions
             {
-                SavePngFromSvgAsync(sourceFilePath, svgHexColor, 48, Path.Combine(iconsDir, "favicon-x48.png"), optimizationOptions),
-                SavePngFromSvgAsync(sourceFilePath, svgHexColor, 96, Path.Combine(iconsDir, "favicon-x96.png"), optimizationOptions),
-                SavePngFromSvgAsync(sourceFilePath, svgHexColor, 180, Path.Combine(iconsDir, "apple-touch-icon.png"), optimizationOptions),
-                SavePngFromSvgAsync(sourceFilePath, svgHexColor, 192, Path.Combine(iconsDir, "favicon-x192.png"), optimizationOptions),
-                SavePngFromSvgAsync(sourceFilePath, svgHexColor, 512, Path.Combine(iconsDir, "favicon-x512.png"), optimizationOptions)
+                OptimizationLevel = optimizationOptions.UseLossy ? OxiPngOptimizationLevel.Level4 : OxiPngOptimizationLevel.Level2,
+                NoColorTypeReduction = !optimizationOptions.UseLossy,
+                NoBitDepthReduction = !optimizationOptions.UseLossy
             };
-            await Task.WhenAll(pngTasks);
-
-            await GenerateIcoFromSvgAsync(sourceFilePath, svgHexColor, new List<int> { 16, 32 }, optimizationOptions, Path.Combine(outputDirectory, "favicon.ico"));
-            await _converterService.SaveSvgAsync(sourceFilePath, Path.Combine(iconsDir, "favicon.svg"));
-            await SaveHtmlFileAsync(Path.Combine(outputDirectory, "index.html"));
-        }
-
-        private async Task SavePngFromRasterAsync(Image<Rgba32> sourceImage, int size, string outputPath, PngOptimizationOptions options)
-        {
-            var pngBytes = await _converterService.CreatePngBytesFromResizedImageAsync(sourceImage, size, options);
-            await File.WriteAllBytesAsync(outputPath, pngBytes);
-        }
-
-        private async Task SavePngFromSvgAsync(string svgPath, string hexColor, int size, string outputPath, PngOptimizationOptions options)
-        {
-            using var image = await _converterService.LoadSvgAtSizeAsync(svgPath, hexColor, size);
-            if (image == null) throw new Exception($"Failed to render SVG at size {size}x{size}.");
-            var pngBytes = await _converterService.CreatePngBytesFromImageAsync(image, options);
-            await File.WriteAllBytesAsync(outputPath, pngBytes);
-        }
-
-        private async Task GenerateIcoFromRasterAsync(Image<Rgba32> sourceImage, List<int> sizes, PngOptimizationOptions options, string outputPath)
-        {
-            var imageEntries = new List<(byte[] Data, byte Width, byte Height)>();
-            foreach (var size in sizes)
+            try
             {
-                var pngBytes = await _converterService.CreatePngBytesFromResizedImageAsync(sourceImage, size, options);
-                byte icoWidth = size == 256 ? (byte)0 : (byte)size;
-                byte icoHeight = size == 256 ? (byte)0 : (byte)size;
-                imageEntries.Add((pngBytes, icoWidth, icoHeight));
+                await _optimizer.OptimizeAsync(outputPath, oxiOptions);
             }
-            await _converterService.CreateIconFile(imageEntries, outputPath);
-        }
-
-        private async Task GenerateIcoFromSvgAsync(string svgPath, string hexColor, List<int> sizes, PngOptimizationOptions options, string outputPath)
-        {
-            var imageEntries = new List<(byte[] Data, byte Width, byte Height)>();
-            foreach (var size in sizes)
+            catch (Exception ex)
             {
-                using var image = await _converterService.LoadSvgAtSizeAsync(svgPath, hexColor, size);
-                if (image == null) throw new Exception($"Failed to render SVG for ICO at size {size}x{size}.");
-                var pngBytes = await _converterService.CreatePngBytesFromImageAsync(image, options);
-                byte icoWidth = size == 256 ? (byte)0 : (byte)size;
-                byte icoHeight = size == 256 ? (byte)0 : (byte)size;
-                imageEntries.Add((pngBytes, icoWidth, icoHeight));
+                Debug.WriteLine($"OxiPNG optimization failed for {outputPath}: {ex.Message}");
             }
-            await _converterService.CreateIconFile(imageEntries, outputPath);
         }
 
         private async Task SaveHtmlFileAsync(string path)
         {
             var assembly = Assembly.GetExecutingAssembly();
-            var resourceName = "ICOforge.favicon_template.html";
+            var resourceName = "ICOforge.assets.favicon_template.html";
 
             await using var stream = assembly.GetManifestResourceStream(resourceName);
             if (stream == null) throw new FileNotFoundException($"Could not find embedded resource: {resourceName}");

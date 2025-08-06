@@ -1,0 +1,82 @@
+<ui:FluentWindow
+    x:Class="ICOforge.AboutWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    Title="About ICOforge"
+    Width="500"
+    Height="350"
+    ExtendsContentIntoTitleBar="True"
+    KeyDown="AboutWindow_KeyDown"
+    ResizeMode="NoResize"
+    WindowStartupLocation="CenterOwner">
+    <ui:FluentWindow.Resources>
+        <Style TargetType="Hyperlink">
+            <Setter Property="Foreground" Value="#6bc2f5" />
+        </Style>
+    </ui:FluentWindow.Resources>
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <ui:TitleBar
+            Title="About ICOforge"
+            Grid.Row="0"
+            CloseWindowByDoubleClickOnIcon="True" />
+
+        <Grid Grid.Row="1" Margin="20">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <StackPanel
+                Grid.Row="0"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Top"
+                Orientation="Horizontal">
+                <Image
+                    x:Name="LogoImage"
+                    Width="64"
+                    Height="64" />
+                <TextBlock
+                    Margin="10,0,0,0"
+                    VerticalAlignment="Center"
+                    FontFamily="pack://application:,,,/assets/fonts/#Source Code Pro"
+                    FontSize="32"
+                    Foreground="#1097e5"
+                    Text="ICOforge" />
+            </StackPanel>
+
+            <StackPanel
+                Grid.Row="1"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center">
+                <TextBlock
+                    Margin="0,0,0,15"
+                    FontSize="14"
+                    Text="A Windows utility for converting various image formats into multi-resolution .ico files. It supports SVG colorization and can produce Favicon packs for use with websites."
+                    TextAlignment="Center"
+                    TextWrapping="Wrap" />
+                <TextBlock TextAlignment="Center">
+                    <Hyperlink NavigateUri="https://github.com/dcog989/ICOforge" RequestNavigate="Hyperlink_RequestNavigate">
+                        https://github.com/dcog989/ICOforge
+                    </Hyperlink>
+                </TextBlock>
+            </StackPanel>
+
+            <TextBlock
+                x:Name="VersionText"
+                Grid.Row="2"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Bottom"
+                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                Text="Version X.X.X" />
+        </Grid>
+    </Grid>
+</ui:FluentWindow>

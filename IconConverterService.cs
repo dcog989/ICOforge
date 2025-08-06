@@ -3,22 +3,18 @@ using SixLabors.ImageSharp.Formats.Png;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 using SixLabors.ImageSharp.Processing.Processors.Quantization;
-using SkiaSharp;
 using Svg.Skia;
 using System.Collections.Concurrent;
 using System.IO;
-using System.Linq;
+using SkiaSharp;
 
 namespace ICOforge
 {
-    public record PngOptimizationOptions(bool UseLossy, bool UseLossless, int MaxColors);
-
+    public record PngOptimizationOptions(bool UseLossy, int MaxColors);
     public record ConversionResult(List<string> SuccessfulFiles, List<(string File, string Error)> FailedFiles);
 
     public class IconConverterService
     {
-        private readonly OxiPngOptimizer _optimizer = new();
-
         public async Task<ConversionResult> ConvertImagesToIcoAsync(List<string> filePaths, List<int> sizes, string svgHexColor, PngOptimizationOptions optimizationOptions, string outputDirectory, IProgress<IconConversionProgress> progress)
         {
             var successfulFiles = new ConcurrentBag<string>();
@@ -32,34 +28,16 @@ namespace ICOforge
             {
                 try
                 {
-                    var outputIcoPath = Path.Combine(outputDirectory, $"{Path.GetFileNameWithoutExtension(filePath)}.ico");
-                    var imageEntries = new List<(byte[] Data, byte Width, byte Height)>();
+                    var pngs = new List<(byte[] Data, int Width, int Height)>();
+                    foreach (var size in sizes)
+                    {
+                        var pngData = await CreatePngAsync(filePath, size, svgHexColor, optimizationOptions);
+                        pngs.Add((pngData, size, size));
+                    }
 
-                    if (Path.GetExtension(filePath).Equals(".svg", StringComparison.OrdinalIgnoreCase))
-                    {
-                        foreach (var size in sizes)
-                        {
-                            using var sizedImage = await LoadSvgAtSizeAsync(filePath, svgHexColor, size);
-                            if (sizedImage == null) throw new Exception("Failed to render SVG.");
-                            var pngBytes = await CreatePngBytesFromImageAsync(sizedImage, optimizationOptions);
-                            byte icoWidth = size >= 256 ? (byte)0 : (byte)size;
-                            byte icoHeight = size >= 256 ? (byte)0 : (byte)size;
-                            imageEntries.Add((pngBytes, icoWidth, icoHeight));
-                        }
-                    }
-                    else
-                    {
-                        using var sourceImage = await Image.LoadAsync<Rgba32>(filePath);
-                        foreach (var size in sizes)
-                        {
-                            var pngBytes = await CreatePngBytesFromResizedImageAsync(sourceImage, size, optimizationOptions);
-                            byte icoWidth = size >= 256 ? (byte)0 : (byte)size;
-                            byte icoHeight = size >= 256 ? (byte)0 : (byte)size;
-                            imageEntries.Add((pngBytes, icoWidth, icoHeight));
-                        }
-                    }
-                    await CreateIconFile(imageEntries, outputIcoPath);
-                    successfulFiles.Add(outputIcoPath);
+                    string finalPath = Path.Combine(outputDirectory, $"{Path.GetFileNameWithoutExtension(filePath)}.ico");
+                    await WriteIcoFileAsync(finalPath, pngs);
+                    successfulFiles.Add(finalPath);
                 }
                 catch (Exception ex)
                 {
@@ -76,151 +54,109 @@ namespace ICOforge
             return new ConversionResult(successfulFiles.ToList(), failedFiles.ToList());
         }
 
-        public async Task<string?> CreateFaviconPackAsync(string filePath, string svgHexColor, PngOptimizationOptions optimizationOptions, string outputDirectory, IProgress<IconConversionProgress> progress)
+        public async Task<byte[]> CreatePngAsync(string filePath, int size, string svgHexColor, PngOptimizationOptions optimizationOptions)
         {
-            string? warningMessage = null;
-            if (optimizationOptions.UseLossless && !_optimizer.IsAvailable())
-            {
-                warningMessage = "Warning: OxiPNG.exe not found. Lossless compression was skipped.";
-            }
+            using var image = await LoadImageAsync(filePath, size, svgHexColor);
 
-            var generator = new FaviconPackGenerator(this);
-            progress.Report(new IconConversionProgress { Percentage = 10, CurrentFile = "Loading source image..." });
+            image.Mutate(x => x.Resize(size, size));
 
-            if (Path.GetExtension(filePath).Equals(".svg", StringComparison.OrdinalIgnoreCase))
-            {
-                await generator.CreateFromSvgAsync(filePath, svgHexColor, outputDirectory, optimizationOptions);
-            }
-            else
-            {
-                using var sourceImage = await Image.LoadAsync<Rgba32>(filePath);
-                await generator.CreateFromRasterAsync(sourceImage, outputDirectory, optimizationOptions);
-            }
-
-            progress.Report(new IconConversionProgress { Percentage = 100, CurrentFile = "Done!" });
-            return warningMessage;
-        }
-
-        internal async Task<byte[]> CreatePngBytesFromResizedImageAsync(Image<Rgba32> sourceImage, int size, PngOptimizationOptions optimizationOptions)
-        {
-            using var resizedImage = sourceImage.Clone();
-            resizedImage.Mutate(x => x.Resize(size, size, KnownResamplers.Bicubic));
-            return await CreatePngBytesFromImageAsync(resizedImage, optimizationOptions);
-        }
-
-        internal async Task<byte[]> CreatePngBytesFromImageAsync(Image<Rgba32> image, PngOptimizationOptions optimizationOptions)
-        {
-            using var ms = new MemoryStream();
-
+            PngEncoder encoder;
             if (optimizationOptions.UseLossy)
             {
-                var quantizer = new WuQuantizer(new QuantizerOptions { MaxColors = optimizationOptions.MaxColors, Dither = null });
-                var encoder = new PngEncoder { Quantizer = quantizer, ColorType = PngColorType.Palette, CompressionLevel = PngCompressionLevel.BestCompression };
-                await image.SaveAsync(ms, encoder);
-
-                ms.Position = 0;
-                var imageInfo = await Image.IdentifyAsync(ms);
-                if (imageInfo.PixelType.BitsPerPixel > 8)
+                encoder = new PngEncoder
                 {
-                    ms.Position = 0;
-                    ms.SetLength(0);
-                    var fallbackEncoder = new PngEncoder { ColorType = PngColorType.RgbWithAlpha, BitDepth = PngBitDepth.Bit8, CompressionLevel = PngCompressionLevel.BestCompression };
-                    await image.SaveAsync(ms, fallbackEncoder);
-                }
+                    Quantizer = new WuQuantizer(new QuantizerOptions { MaxColors = optimizationOptions.MaxColors }),
+                    ColorType = PngColorType.Palette,
+                    BitDepth = PngBitDepth.Bit8
+                };
             }
             else
             {
-                var encoder = new PngEncoder { ColorType = PngColorType.RgbWithAlpha, BitDepth = PngBitDepth.Bit8, CompressionLevel = PngCompressionLevel.BestCompression };
-                await image.SaveAsync(ms, encoder);
+                encoder = new PngEncoder();
             }
 
-            var pngBytes = ms.ToArray();
+            using var memoryStream = new MemoryStream();
+            await image.SaveAsync(memoryStream, encoder);
+            return memoryStream.ToArray();
+        }
 
-            if (optimizationOptions.UseLossless && _optimizer.IsAvailable())
+        private async Task<Image<Rgba32>> LoadImageAsync(string filePath, int size, string svgHexColor)
+        {
+            if (Path.GetExtension(filePath).Equals(".svg", StringComparison.OrdinalIgnoreCase))
             {
-                string tempPngPath = Path.ChangeExtension(Path.GetTempFileName(), ".png");
-                try
-                {
-                    await File.WriteAllBytesAsync(tempPngPath, pngBytes);
-                    var oxiLevel = optimizationOptions.UseLossy ? OxiPngOptimizationLevel.Level4 : OxiPngOptimizationLevel.Level2;
-                    var options = new OxiPngOptions { OptimizationLevel = oxiLevel, StripMode = OxiPngStripMode.Safe };
-                    await _optimizer.OptimizeAsync(tempPngPath, options);
-                    pngBytes = await File.ReadAllBytesAsync(tempPngPath);
-                }
-                finally
-                {
-                    if (File.Exists(tempPngPath)) File.Delete(tempPngPath);
-                }
+                return await LoadSvgAndApplyColorAsync(filePath, size, svgHexColor);
+            }
+            return await Image.LoadAsync<Rgba32>(filePath);
+        }
+
+        private async Task<Image<Rgba32>> LoadSvgAndApplyColorAsync(string filePath, int size, string svgHexColor)
+        {
+            using var svg = new SKSvg();
+            if (svg.Load(filePath) == null)
+            {
+                throw new InvalidDataException("Could not load SVG file.");
             }
 
-            return pngBytes;
-        }
-
-        internal async Task SaveSvgAsync(string sourcePath, string outputPath)
-        {
-            await Task.Run(() => File.Copy(sourcePath, outputPath, true));
-        }
-
-        internal async Task<Image<Rgba32>?> LoadSvgAtSizeAsync(string path, string hexColor, int targetSize)
-        {
-            return await Task.Run(() =>
+            if (svg.Picture == null)
             {
-                using var svg = new SKSvg();
-                if (svg.Load(path) is null) return null;
+                throw new InvalidDataException("The SVG file is invalid or could not be rendered.");
+            }
 
-                using var picture = svg.Picture;
-                if (picture is null) return null;
+            using var bitmap = new SKBitmap(size, size);
+            using var canvas = new SKCanvas(bitmap);
+            canvas.Clear(SKColors.Transparent);
+            var scaleMatrix = SKMatrix.CreateScale(size / svg.Picture.CullRect.Width, size / svg.Picture.CullRect.Height);
 
-                var imageInfo = new SKImageInfo(targetSize, targetSize, SKColorType.Bgra8888, SKAlphaType.Premul);
-                using var bitmap = new SKBitmap(imageInfo);
-                using var canvas = new SKCanvas(bitmap);
-
-                var sourceSize = picture.CullRect;
-                float scaleX = targetSize / sourceSize.Width;
-                float scaleY = targetSize / sourceSize.Height;
-                var matrix = SKMatrix.CreateScale(scaleX, scaleY);
-
-                if (!string.IsNullOrWhiteSpace(hexColor) && SKColor.TryParse(hexColor, out var color))
+            if (!string.IsNullOrWhiteSpace(svgHexColor) && SKColor.TryParse(svgHexColor, out var skColor))
+            {
+                using var paint = new SKPaint
                 {
-                    using var paint = new SKPaint { IsAntialias = true, ColorFilter = SKColorFilter.CreateBlendMode(color, SKBlendMode.SrcIn) };
-                    canvas.DrawPicture(picture, matrix, paint);
-                }
-                else
-                {
-                    using var paint = new SKPaint { IsAntialias = true };
-                    canvas.DrawPicture(picture, matrix, paint);
-                }
+                    ColorFilter = SKColorFilter.CreateBlendMode(skColor, SKBlendMode.SrcIn)
+                };
+                canvas.DrawPicture(svg.Picture, in scaleMatrix, paint);
+            }
+            else
+            {
+                canvas.DrawPicture(svg.Picture, in scaleMatrix);
+            }
 
-                var pixelBytes = bitmap.GetPixelSpan();
-                using var bgraImage = Image.LoadPixelData<Bgra32>(pixelBytes, targetSize, targetSize);
-                return bgraImage.CloneAs<Rgba32>();
-            });
+            using var stream = new MemoryStream();
+            bitmap.Encode(stream, SKEncodedImageFormat.Png, 100);
+            stream.Position = 0;
+
+            return await Image.LoadAsync<Rgba32>(stream);
         }
 
-        public async Task CreateIconFile(List<(byte[] Data, byte Width, byte Height)> images, string outputPath)
+        private async Task WriteIcoFileAsync(string outputPath, List<(byte[] Data, int Width, int Height)> pngs)
         {
-            var sortedImages = images.OrderBy(i => i.Width == 0 ? 256 : i.Width).ToList();
-            await using var stream = new FileStream(outputPath, FileMode.Create, FileAccess.Write);
+            var orderedPngs = pngs.OrderBy(p => p.Width).ToList();
+
+            await using var stream = new FileStream(outputPath, FileMode.Create, FileAccess.Write, FileShare.None, 4096, true);
             await using var writer = new BinaryWriter(stream);
-            writer.Write((ushort)0);
-            writer.Write((ushort)1);
-            writer.Write((ushort)sortedImages.Count);
-            int offset = 6 + (16 * sortedImages.Count);
-            foreach (var image in sortedImages)
+
+            writer.Write((ushort)0); // Reserved
+            writer.Write((ushort)1); // Type: 1 for icon
+            writer.Write((ushort)orderedPngs.Count); // Number of images
+
+            long offset = 6 + (16 * orderedPngs.Count);
+            foreach (var png in orderedPngs)
             {
-                writer.Write(image.Width);
-                writer.Write(image.Height);
-                writer.Write((byte)0);
-                writer.Write((byte)0);
-                writer.Write((ushort)0);
-                writer.Write((ushort)0);
-                writer.Write((uint)image.Data.Length);
-                writer.Write((uint)offset);
-                offset += image.Data.Length;
+                writer.Write((byte)(png.Width >= 256 ? 0 : png.Width));
+                writer.Write((byte)(png.Height >= 256 ? 0 : png.Height));
+                writer.Write((byte)0); // bColorCount
+                writer.Write((byte)0); // bReserved
+                                       // This is the critical fix. The working icon uses wPlanes = 0.
+                writer.Write((ushort)0); // wPlanes
+                writer.Write((ushort)32); // wBitCount
+                writer.Write((uint)png.Data.Length); // dwBytesInRes
+                writer.Write((uint)offset); // dwImageOffset
+
+                offset += png.Data.Length;
             }
-            foreach (var image in sortedImages)
+
+            foreach (var png in orderedPngs)
             {
-                await stream.WriteAsync(image.Data);
+                await stream.WriteAsync(png.Data);
             }
         }
     }

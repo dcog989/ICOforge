@@ -62,9 +62,19 @@ namespace ICOforge
                 OxiPngOptimizationLevel.Level4 => "4",
                 OxiPngOptimizationLevel.Level5 => "5",
                 OxiPngOptimizationLevel.Level6 or OxiPngOptimizationLevel.Max => "6",
-                _ => "4"
+                _ => "2"
             };
             sb.Append($"-o {level} ");
+
+            if (options.NoColorTypeReduction)
+            {
+                sb.Append("--nc ");
+            }
+
+            if (options.NoBitDepthReduction)
+            {
+                sb.Append("--nb ");
+            }
 
             if (options.StripMode != OxiPngStripMode.None)
             {

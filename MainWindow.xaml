@@ -6,20 +6,23 @@
     xmlns:local="clr-namespace:ICOforge"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    xmlns:viewModels="clr-namespace:ICOforge"
     Title="ICOforge"
     Width="750"
-    Height="750"
+    Height="800"
     MinWidth="700"
-    MinHeight="700"
-    Foreground="lightgray"
+    MinHeight="800"
+    d:DataContext="{d:DesignInstance Type=viewModels:MainWindowViewModel,
+                                     IsDesignTimeCreatable=False}"
     Icon="assets/icons/icoforge.ico"
     WindowStartupLocation="CenterScreen"
     mc:Ignorable="d">
     <Window.Resources>
         <local:HexToBrushConverter x:Key="HexToBrushConverter" />
+        <local:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         <Style x:Key="HelpTextStyle" TargetType="TextBlock">
             <Setter Property="Text" Value="(?)" />
-            <Setter Property="Foreground" Value="gray" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
             <Setter Property="FontSize" Value="15" />
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="Margin" Value="5,0,0,0" />
@@ -46,7 +49,7 @@
             <Border
                 Grid.Column="0"
                 AllowDrop="True"
-                Background="#282828"
+                Background="{DynamicResource ControlFillColorSecondaryBrush}"
                 BorderBrush="Gray"
                 BorderThickness="2"
                 CornerRadius="5"
@@ -60,12 +63,11 @@
                     </ContextMenu>
                 </Border.ContextMenu>
                 <TextBlock
-                    x:Name="DropZoneText"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center"
-                    Foreground="lightgray"
                     IsHitTestVisible="False"
-                    TextAlignment="Center">
+                    TextAlignment="Center"
+                    Visibility="{Binding IsDropZoneVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                     Drag and drop image files here<LineBreak />
                     or click to select</TextBlock>
             </Border>
@@ -79,11 +81,14 @@
                 BorderThickness="0"
                 DragEnter="DropZone_DragEnter"
                 Drop="DropZone_Drop"
+                IsHitTestVisible="{Binding IsFileListViewHitTestVisible}"
+                ItemsSource="{Binding FileList}"
                 KeyDown="FileListView_KeyDown"
+                SelectionChanged="FileListView_SelectionChanged"
                 SelectionMode="Extended">
                 <ListView.ItemTemplate>
                     <DataTemplate>
-                        <TextBlock Foreground="lightgray" Text="{Binding}" />
+                        <TextBlock Foreground="{DynamicResource TextFillColorPrimaryBrush}" Text="{Binding}" />
                     </DataTemplate>
                 </ListView.ItemTemplate>
                 <ListView.ContextMenu>
@@ -91,10 +96,14 @@
                         <MenuItem Click="AddFilesMenuItem_Click" Header="Add Files..." />
                         <MenuItem Click="AddFolderMenuItem_Click" Header="Add Folder..." />
                         <Separator />
-                        <MenuItem Click="FaviconPackMenuItem_Click" Header="Create Favicon Pack from this image" />
+                        <MenuItem
+                            x:Name="AnalyzeMenuItem"
+                            Click="AnalyzeMenuItem_Click"
+                            Header="Analyze Selected ICO"
+                            IsEnabled="False" />
                         <Separator />
-                        <MenuItem Click="DeleteMenuItem_Click" Header="Delete Selected" />
-                        <MenuItem Click="ClearMenuItem_Click" Header="Clear List" />
+                        <MenuItem Command="{Binding DeleteSelectedFilesCommand}" Header="Delete Selected" />
+                        <MenuItem Command="{Binding ClearListCommand}" Header="Clear List" />
                     </ContextMenu>
                 </ListView.ContextMenu>
             </ListView>
@@ -102,7 +111,6 @@
             <Grid Grid.Column="1" Margin="20,0,0,0">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
                 <StackPanel Grid.Row="0" VerticalAlignment="Top">
@@ -110,105 +118,148 @@
                         <TextBlock
                             FontSize="17"
                             FontWeight="Bold"
+                            Text="Output Profile..." />
+                        <TextBlock Style="{StaticResource HelpTextStyle}">
+                            <TextBlock.ToolTip>
+                                <ToolTip>Select a profile to determine the output type and included icon sizes.</ToolTip>
+                            </TextBlock.ToolTip>
+                        </TextBlock>
+                    </StackPanel>
+                    <ComboBox
+                        Margin="10,5,0,0"
+                        DisplayMemberPath="Name"
+                        ItemsSource="{Binding Options.Profiles}"
+                        SelectedItem="{Binding Options.SelectedProfile}">
+                        <ComboBox.ItemContainerStyle>
+                            <Style TargetType="ComboBoxItem">
+                                <Setter Property="ToolTip" Value="{Binding ToolTip}" />
+                            </Style>
+                        </ComboBox.ItemContainerStyle>
+                    </ComboBox>
+
+                    <StackPanel Margin="0,20,0,0" Orientation="Horizontal">
+                        <TextBlock
+                            FontSize="17"
+                            FontWeight="Bold"
                             Text="ICO Sizes..." />
                         <TextBlock Style="{StaticResource HelpTextStyle}">
                             <TextBlock.ToolTip>
-                                <ToolTip>Select which sizes to embed in the final .ico file.</ToolTip>
+                                <ToolTip>Select which sizes to embed in the final .ico file. Available when 'Custom' or 'Favicon Pack' profile is selected.</ToolTip>
                             </TextBlock.ToolTip>
                         </TextBlock>
                     </StackPanel>
 
-                    <Grid Margin="10,10,0,0">
+                    <Grid Margin="10,10,0,0" IsEnabled="{Binding Options.IsIcoSizesEnabled}">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0">
-                            <CheckBox
-                                x:Name="Size16"
-                                Margin="0,0,0,5"
-                                Content="16x16"
-                                FontSize="11"
-                                IsChecked="True" />
-                            <CheckBox
-                                x:Name="Size24"
-                                Margin="0,0,0,5"
-                                Content="24x24"
-                                FontSize="11"
-                                IsChecked="True" />
-                            <CheckBox
-                                x:Name="Size32"
-                                Margin="0,0,0,5"
-                                Content="32x32"
-                                FontSize="11"
-                                IsChecked="True" />
-                        </StackPanel>
-                        <StackPanel Grid.Column="1">
-                            <CheckBox
-                                x:Name="Size48"
-                                Margin="0,0,0,5"
-                                Content="48x48"
-                                FontSize="11"
-                                IsChecked="True" />
-                            <CheckBox
-                                x:Name="Size64"
-                                Margin="0,0,0,5"
-                                Content="64x64"
-                                FontSize="11"
-                                IsChecked="True" />
-                            <CheckBox
-                                x:Name="Size72"
-                                Margin="0,0,0,5"
-                                Content="72x72"
-                                FontSize="11"
-                                IsChecked="True" />
-                        </StackPanel>
-                        <StackPanel Grid.Column="2">
-                            <CheckBox
-                                x:Name="Size96"
-                                Margin="0,0,0,5"
-                                Content="96x96"
-                                FontSize="11"
-                                IsChecked="True" />
-                            <CheckBox
-                                x:Name="Size128"
-                                Margin="0,0,0,5"
-                                Content="128x128"
-                                FontSize="11"
-                                IsChecked="True" />
-                            <CheckBox
-                                x:Name="Size256"
-                                Margin="0,0,0,5"
-                                Content="256x256"
-                                FontSize="11"
-                                IsChecked="True" />
-                        </StackPanel>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <CheckBox
+                            Grid.Row="0"
+                            Grid.Column="0"
+                            Margin="0,0,0,5"
+                            Content="16x16"
+                            IsChecked="{Binding Options.Size16}" />
+                        <CheckBox
+                            Grid.Row="0"
+                            Grid.Column="1"
+                            Margin="0,0,0,5"
+                            Content="20x20"
+                            IsChecked="{Binding Options.Size20}" />
+                        <CheckBox
+                            Grid.Row="0"
+                            Grid.Column="2"
+                            Margin="0,0,0,5"
+                            Content="24x24"
+                            IsChecked="{Binding Options.Size24}" />
+
+                        <CheckBox
+                            Grid.Row="1"
+                            Grid.Column="0"
+                            Margin="0,0,0,5"
+                            Content="32x32"
+                            IsChecked="{Binding Options.Size32}" />
+                        <CheckBox
+                            Grid.Row="1"
+                            Grid.Column="1"
+                            Margin="0,0,0,5"
+                            Content="48x48"
+                            IsChecked="{Binding Options.Size48}" />
+                        <CheckBox
+                            Grid.Row="1"
+                            Grid.Column="2"
+                            Margin="0,0,0,5"
+                            Content="64x64"
+                            IsChecked="{Binding Options.Size64}" />
+
+                        <CheckBox
+                            Grid.Row="2"
+                            Grid.Column="0"
+                            Margin="0,0,0,5"
+                            Content="72x72"
+                            IsChecked="{Binding Options.Size72}" />
+                        <CheckBox
+                            Grid.Row="2"
+                            Grid.Column="1"
+                            Margin="0,0,0,5"
+                            Content="96x96"
+                            IsChecked="{Binding Options.Size96}" />
+                        <CheckBox
+                            Grid.Row="2"
+                            Grid.Column="2"
+                            Margin="0,0,0,5"
+                            Content="128x128"
+                            IsChecked="{Binding Options.Size128}" />
+
+                        <CheckBox
+                            Grid.Row="3"
+                            Grid.Column="0"
+                            Margin="0,0,0,5"
+                            Content="180x180"
+                            IsChecked="{Binding Options.Size180}" />
+                        <CheckBox
+                            Grid.Row="3"
+                            Grid.Column="1"
+                            Margin="0,0,0,5"
+                            Content="192x192"
+                            IsChecked="{Binding Options.Size192}" />
+                        <CheckBox
+                            Grid.Row="3"
+                            Grid.Column="2"
+                            Margin="0,0,0,5"
+                            Content="256x256"
+                            IsChecked="{Binding Options.Size256}" />
                     </Grid>
 
-                    <StackPanel Margin="0,15,0,0" Orientation="Horizontal">
+                    <StackPanel Margin="0,20,0,0" Orientation="Horizontal">
                         <TextBlock
                             FontSize="17"
                             FontWeight="Bold"
                             Text="SVG Color..." />
                         <TextBlock Style="{StaticResource HelpTextStyle}">
                             <TextBlock.ToolTip>
-                                <ToolTip>Apply a color overlay to SVG files. Click swatch for picker.</ToolTip>
+                                <ToolTip>Apply a color overlay to SVG files. This is best suited for single-color SVGs as it will convert the image to grayscale before applying the tint. Click the color swatch for a picker.</ToolTip>
                             </TextBlock.ToolTip>
                         </TextBlock>
                     </StackPanel>
 
                     <StackPanel Margin="10,5,0,0" Orientation="Horizontal">
                         <CheckBox
-                            x:Name="EnableSvgColorizationCheckBox"
                             Margin="0,0,5,0"
                             VerticalAlignment="Center"
-                            IsChecked="False" />
-                        <StackPanel IsEnabled="{Binding IsChecked, ElementName=EnableSvgColorizationCheckBox}" Orientation="Horizontal">
+                            IsChecked="{Binding Options.EnableSvgColorization}" />
+                        <StackPanel IsEnabled="{Binding Options.EnableSvgColorization}" Orientation="Horizontal">
                             <ui:TextBox
                                 x:Name="SvgColorTextBox"
                                 Width="120"
-                                Text="#FFD193" />
+                                Text="{Binding Options.SvgColor, UpdateSourceTrigger=PropertyChanged}" />
                             <Grid
                                 Width="{Binding ActualHeight, ElementName=SvgColorTextBox}"
                                 Height="{Binding ActualHeight, ElementName=SvgColorTextBox}"
@@ -216,7 +267,7 @@
                                 Cursor="Hand"
                                 PreviewMouseDown="OpenColorPicker_MouseDown">
                                 <Rectangle
-                                    Fill="{Binding ElementName=SvgColorTextBox, Path=Text, Converter={StaticResource HexToBrushConverter}, FallbackValue=Gray}"
+                                    Fill="{Binding Path=Text, ElementName=SvgColorTextBox, Converter={StaticResource HexToBrushConverter}, FallbackValue=Gray}"
                                     RadiusX="4"
                                     RadiusY="4"
                                     Stroke="Gray"
@@ -229,97 +280,66 @@
                         </StackPanel>
                     </StackPanel>
 
-                    <StackPanel Margin="0,15,0,0" Orientation="Horizontal">
+                    <StackPanel Margin="0,20,0,0" Orientation="Horizontal">
                         <TextBlock
                             FontSize="17"
                             FontWeight="Bold"
-                            Text="Image Compression..." />
+                            Text="Compression..." />
                         <TextBlock Style="{StaticResource HelpTextStyle}">
                             <TextBlock.ToolTip>
-                                <ToolTip>
-                                    Select one, both, or neither compression methods.
-                                    Lossy should use fewer colors for less complex images or icons.
-                                </ToolTip>
+                                <ToolTip>Apply lossy compression and adjust color depth as required.</ToolTip>
                             </TextBlock.ToolTip>
                         </TextBlock>
                     </StackPanel>
 
-                    <StackPanel Margin="10,5,0,0">
-                        <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
-                            <CheckBox
-                                x:Name="UseLossyCompressionCheckBox"
-                                VerticalAlignment="Center"
-                                Content="Lossy (ImageSharp)"
-                                IsChecked="True" />
-                            <ComboBox
-                                x:Name="ColorCountComboBox"
-                                Margin="10,0,5,0"
-                                VerticalAlignment="Center"
-                                IsEnabled="{Binding IsChecked, ElementName=UseLossyCompressionCheckBox}" />
-                            <TextBlock
-                                VerticalAlignment="Center"
-                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                IsEnabled="{Binding IsChecked, ElementName=UseLossyCompressionCheckBox}"
-                                Text="Colors" />
-                        </StackPanel>
-
+                    <StackPanel
+                        Margin="10,5,0,0"
+                        VerticalAlignment="Center"
+                        Orientation="Horizontal">
                         <CheckBox
-                            x:Name="UseLosslessCompressionCheckBox"
-                            Margin="0,10,0,0"
-                            Content="Lossless (Oxipng)"
-                            IsChecked="True"
-                            ToolTip="Optimizes PNG file structure without quality loss. Can be combined with lossy compression." />
+                            x:Name="LossyCompressionCheckBox"
+                            VerticalAlignment="Center"
+                            Content="Lossy compression @"
+                            IsChecked="{Binding Options.UseLossyCompression}" />
+                        <ComboBox
+                            Margin="5,0,5,0"
+                            VerticalAlignment="Center"
+                            IsEnabled="{Binding IsChecked, ElementName=LossyCompressionCheckBox}"
+                            ItemsSource="{Binding Options.ColorOptions}"
+                            SelectedItem="{Binding Options.SelectedColorCount}" />
+                        <TextBlock
+                            Margin="5,0,5,0"
+                            VerticalAlignment="Center"
+                            IsEnabled="{Binding IsChecked, ElementName=LossyCompressionCheckBox}"
+                            Text="colors" />
                     </StackPanel>
 
                     <TextBlock
-                        Margin="0,15,0,0"
+                        Margin="0,20,0,0"
                         FontSize="17"
                         FontWeight="Bold"
                         Text="Output to..." />
                     <RadioButton
-                        x:Name="OutputSameAsSource"
                         Margin="20,5,0,0"
                         Content="Same as source"
                         GroupName="OutputLocation"
-                        IsChecked="True" />
-                    <RadioButton
-                        x:Name="OutputCustom"
-                        Margin="20,5,0,0"
-                        GroupName="OutputLocation">
-                        <TextBlock>
+                        IsChecked="{Binding Options.IsOutputToSource}" />
+                    <RadioButton Margin="20,5,0,0" GroupName="OutputLocation">
+                        <TextBlock TextWrapping="Wrap">
                             <Run Text="Custom:" />
                             <Hyperlink
                                 Click="BrowseOutput_Click"
-                                Foreground="#0078D4"
+                                Foreground="#6bc2f5"
                                 TextDecorations="Underline">
-                                <Run x:Name="CustomLocationText" Text="[None Selected]" />
+                                <Run Text="{Binding Options.CustomLocationText}" />
                             </Hyperlink>
                         </TextBlock>
                     </RadioButton>
                 </StackPanel>
-
-                <StackPanel
-                    Grid.Row="1"
-                    Margin="0,20,0,5"
-                    HorizontalAlignment="Left"
-                    VerticalAlignment="Bottom"
-                    Orientation="Horizontal">
-                    <Image
-                        Width="64"
-                        Height="64"
-                        Source="pack://application:,,,/assets/icons/icoforge.ico" />
-                    <TextBlock
-                        Margin="10,0,0,0"
-                        VerticalAlignment="Center"
-                        FontFamily="pack://application:,,,/assets/fonts/#Source Code Pro"
-                        FontSize="32"
-                        Foreground="#6bc2f5"
-                        Text="ICOforge" />
-                </StackPanel>
             </Grid>
         </Grid>
 
-        <Grid Grid.Row="2" Margin="20,0,20,20">
+        <Grid Grid.Row="2" Margin="20,10,20,20">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="340" />
@@ -329,49 +349,54 @@
                 Grid.Column="0"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
-                Orientation="Horizontal">
-                <ui:Button
-                    x:Name="ConvertButton"
-                    Margin="0,0,10,0"
-                    BorderBrush="#0078D4"
-                    BorderThickness="1"
-                    Click="ConvertButton_Click"
-                    Content="Convert to ICO" />
-
-                <ui:Button
-                    x:Name="FaviconPackButton"
-                    BorderBrush="#0078D4"
-                    BorderThickness="1"
-                    Click="FaviconPackButton_Click"
-                    Content="Create Favicon Pack" />
+                Cursor="Hand"
+                Orientation="Horizontal"
+                PreviewMouseDown="AboutPanel_PreviewMouseDown">
+                <Image
+                    x:Name="LogoImage"
+                    Width="64"
+                    Height="64" />
+                <TextBlock
+                    Margin="10,0,0,0"
+                    VerticalAlignment="Center"
+                    FontFamily="pack://application:,,,/assets/fonts/#Source Code Pro"
+                    FontSize="32"
+                    Foreground="#1097e5"
+                    Text="ICOforge" />
             </StackPanel>
+
+            <ui:Button
+                Grid.Column="1"
+                Height="40"
+                Padding="20,0"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Appearance="Primary"
+                Command="{Binding CreateFilesCommand}">
+                <TextBlock FontSize="18" Text="Create Files" />
+            </ui:Button>
         </Grid>
 
-        <!--  Processing Overlay  -->
         <Grid
-            x:Name="ProcessingOverlay"
             Grid.Row="0"
             Grid.RowSpan="3"
             Background="#AA000000"
-            Visibility="Collapsed">
+            Visibility="{Binding IsProcessing, Converter={StaticResource BooleanToVisibilityConverter}}">
             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                 <TextBlock
                     Margin="0,0,0,20"
                     HorizontalAlignment="Center"
                     FontSize="24"
-                    Foreground="lightgray"
                     Text="Processing..." />
                 <ProgressBar
-                    x:Name="ConversionProgressBar"
                     Width="300"
-                    Height="20" />
+                    Height="20"
+                    Value="{Binding ConversionProgress}" />
                 <TextBlock
-                    x:Name="ProgressFileText"
                     Margin="0,10,0,0"
                     HorizontalAlignment="Center"
                     FontSize="16"
-                    Foreground="lightgray"
-                    Text="Initializing..." />
+                    Text="{Binding ProgressFileText}" />
             </StackPanel>
         </Grid>
     </Grid>

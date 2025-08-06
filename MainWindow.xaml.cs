@@ -1,16 +1,15 @@
-using Microsoft.Win32;
 using Microsoft.WindowsAPICodePack.Dialogs;
+using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Wpf.Ui.Controls;
 
@@ -18,75 +17,69 @@ namespace ICOforge
 {
     public partial class MainWindow : FluentWindow
     {
-        private readonly IconConverterService _converterService = new();
-        private readonly ObservableCollection<string> _fileList = new();
-        private string _customOutputPath = string.Empty;
+        private readonly MainWindowViewModel _viewModel;
+        private readonly IcoAnalyzerService _analyzerService = new();
+        private static readonly string[] ValidImageExtensions = { ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".svg", ".webp", ".tif", ".tiff" };
 
         public MainWindow()
         {
             InitializeComponent();
-            InitializeApplication();
+            _viewModel = new MainWindowViewModel
+            {
+                ShowMessageBoxAction = ShowMessageBox,
+                OpenInExplorerAction = (path) => Process.Start("explorer.exe", path)
+            };
+            DataContext = _viewModel;
+
+            Loaded += OnMainWindowLoaded;
         }
 
-        private void InitializeApplication()
+        private void OnMainWindowLoaded(object sender, RoutedEventArgs e)
+        {
+            InitializeApplicationIcon();
+        }
+
+        private void InitializeApplicationIcon()
         {
             var iconUri = new Uri("pack://application:,,,/assets/icons/icoforge.ico");
-            this.Icon = new BitmapImage(iconUri);
-            TitleBar.Icon = new ImageIcon { Source = new BitmapImage(iconUri) { DecodePixelWidth = 32 } };
-
-            FileListView.ItemsSource = _fileList;
-            _fileList.CollectionChanged += (s, e) => UpdateDropZoneState();
-
-            _customOutputPath = NativeMethods.GetDownloadsPath();
-            CustomLocationText.Text = Path.GetFileName(_customOutputPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-
-            var colorOptions = new List<int> { 8, 16, 32, 64, 128, 256 };
-            ColorCountComboBox.ItemsSource = colorOptions;
-            ColorCountComboBox.SelectedIndex = 5;
-
-            UpdateDropZoneState();
+            try
+            {
+                BitmapDecoder decoder = BitmapDecoder.Create(iconUri, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+                var bestFrame = decoder.Frames.OrderByDescending(f => f.Width).FirstOrDefault();
+                if (bestFrame != null)
+                {
+                    TitleBar.Icon = new ImageIcon { Source = bestFrame };
+                    LogoImage.Source = bestFrame;
+                }
+            }
+            catch
+            {
+                var fallbackSource = BitmapFrame.Create(iconUri);
+                TitleBar.Icon = new ImageIcon { Source = fallbackSource };
+                LogoImage.Source = fallbackSource;
+            }
         }
-
-        private void UpdateDropZoneState()
-        {
-            bool hasFiles = _fileList.Any();
-            DropZoneText.Visibility = hasFiles ? Visibility.Collapsed : Visibility.Visible;
-            FileListView.IsHitTestVisible = hasFiles;
-        }
-
-        #region --- User Interaction: File Management ---
 
         private void AddFilesMenuItem_Click(object sender, RoutedEventArgs e) => SelectFiles();
         private void AddFolderMenuItem_Click(object sender, RoutedEventArgs e) => SelectFolder();
-        private void DeleteMenuItem_Click(object sender, RoutedEventArgs e) => DeleteSelectedFiles();
-        private void ClearMenuItem_Click(object sender, RoutedEventArgs e) => _fileList.Clear();
 
         private void FileListView_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key == Key.Delete)
             {
-                DeleteSelectedFiles();
+                _viewModel.DeleteSelectedFilesCommand.Execute(null);
             }
         }
 
-        private async void DropZone_MouseDown(object sender, MouseButtonEventArgs e)
+        private void DropZone_MouseDown(object sender, MouseButtonEventArgs e)
         {
-            if (e.OriginalSource is Border || e.OriginalSource is System.Windows.Controls.TextBlock)
+            if (sender is Border border && border.ContextMenu != null)
             {
                 if (e.ChangedButton == MouseButton.Left)
                 {
-                    var choiceBox = new Wpf.Ui.Controls.MessageBox
-                    {
-                        Title = "Input Selection",
-                        PrimaryButtonText = "Files",
-                        SecondaryButtonText = "Folder",
-                        CloseButtonText = "Cancel"
-                    };
-
-                    var result = await choiceBox.ShowDialogAsync();
-
-                    if (result == Wpf.Ui.Controls.MessageBoxResult.Primary) SelectFiles();
-                    else if (result == Wpf.Ui.Controls.MessageBoxResult.Secondary) SelectFolder();
+                    border.ContextMenu.PlacementTarget = border;
+                    border.ContextMenu.IsOpen = true;
+                    e.Handled = true;
                 }
             }
         }
@@ -100,22 +93,25 @@ namespace ICOforge
         {
             if (e.Data.GetData(DataFormats.FileDrop) is string[] files)
             {
-                AddFilesToList(files);
+                _viewModel.AddFilesToList(files);
             }
         }
 
         private void SelectFiles()
         {
-            var openFileDialog = new OpenFileDialog
+            var dialog = new CommonOpenFileDialog
             {
                 Multiselect = true,
-                Filter = "Image Files|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.svg;*.webp|All files|*.*",
                 Title = "Select Image Files"
             };
 
-            if (openFileDialog.ShowDialog() == true)
+            var filterExtensions = string.Join(";", ValidImageExtensions.Select(ext => ext.TrimStart('.')));
+            dialog.Filters.Add(new CommonFileDialogFilter("Image Files", filterExtensions));
+            dialog.Filters.Add(new CommonFileDialogFilter("All files", "*.*"));
+
+            if (dialog.ShowDialog(new WindowInteropHelper(this).Handle) == CommonFileDialogResult.Ok)
             {
-                AddFilesToList(openFileDialog.FileNames);
+                _viewModel.AddFilesToList(dialog.FileNames);
             }
         }
 
@@ -125,43 +121,31 @@ namespace ICOforge
 
             if (dialog.ShowDialog(new WindowInteropHelper(this).Handle) == CommonFileDialogResult.Ok)
             {
-                string[] validExtensions = { ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".svg", ".webp" };
                 var files = Directory.EnumerateFiles(dialog.FileName, "*.*", SearchOption.AllDirectories)
-                                     .Where(f => validExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()));
-                AddFilesToList(files);
+                                     .Where(f => ValidImageExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()));
+                _viewModel.AddFilesToList(files);
             }
         }
 
-        private void DeleteSelectedFiles()
+        private void FileListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
+            if (_viewModel == null) return;
+
             var selectedItems = FileListView.SelectedItems.Cast<string>().ToList();
-            foreach (var item in selectedItems)
-            {
-                _fileList.Remove(item);
-            }
+            _viewModel.SelectedFiles = selectedItems;
+
+            bool isSingleIco = selectedItems.Count == 1 &&
+                               Path.GetExtension(selectedItems.FirstOrDefault() ?? string.Empty)
+                                   .Equals(".ico", StringComparison.OrdinalIgnoreCase);
+            AnalyzeMenuItem.IsEnabled = isSingleIco;
         }
-
-        private void AddFilesToList(IEnumerable<string> files)
-        {
-            foreach (var file in files)
-            {
-                if (!_fileList.Contains(file))
-                {
-                    _fileList.Add(file);
-                }
-            }
-        }
-
-        #endregion
-
-        #region --- User Interaction: Options ---
 
         private void OpenColorPicker_MouseDown(object sender, MouseButtonEventArgs e)
         {
             using var colorDialog = new System.Windows.Forms.ColorDialog { FullOpen = true };
             try
             {
-                var wpfColor = (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(SvgColorTextBox.Text);
+                var wpfColor = (Color)ColorConverter.ConvertFromString(_viewModel.Options.SvgColor);
                 colorDialog.Color = System.Drawing.Color.FromArgb(wpfColor.A, wpfColor.R, wpfColor.G, wpfColor.B);
             }
             catch { /* Ignore invalid hex */ }
@@ -169,186 +153,136 @@ namespace ICOforge
             if (colorDialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
             {
                 var selectedColor = colorDialog.Color;
-                SvgColorTextBox.Text = $"#{selectedColor.R:X2}{selectedColor.G:X2}{selectedColor.B:X2}";
+                _viewModel.Options.SvgColor = $"#{selectedColor.R:X2}{selectedColor.G:X2}{selectedColor.B:X2}";
             }
         }
 
         private void BrowseOutput_Click(object sender, RoutedEventArgs e)
         {
-            OutputCustom.IsChecked = true;
+            _viewModel.Options.IsOutputToSource = false;
             var dialog = new CommonOpenFileDialog
             {
                 IsFolderPicker = true,
                 Title = "Select a custom output folder",
-                InitialDirectory = _customOutputPath
+                InitialDirectory = _viewModel.Options.CustomOutputPath
             };
 
             if (dialog.ShowDialog(new WindowInteropHelper(this).Handle) == CommonFileDialogResult.Ok)
             {
-                _customOutputPath = dialog.FileName;
-                CustomLocationText.Text = Path.GetFileName(_customOutputPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                _viewModel.Options.CustomOutputPath = dialog.FileName;
             }
         }
 
-        #endregion
-
-        #region --- Conversion Process ---
-        private async void ConvertButton_Click(object sender, RoutedEventArgs e)
+        private void AnalyzeMenuItem_Click(object sender, RoutedEventArgs e)
         {
-            if (!AreInputsValid(isIcoConversion: true)) return;
+            if (FileListView.SelectedItem is not string filePath) return;
 
-            await RunConversionProcessAsync("ICO", async (outputDir) =>
-            {
-                var filesToProcess = new List<string>(_fileList);
-                var svgHexColor = EnableSvgColorizationCheckBox.IsChecked == true ? SvgColorTextBox.Text : string.Empty;
-                var optimizationOptions = GetPngOptimizationOptions();
-
-                var result = await _converterService.ConvertImagesToIcoAsync(filesToProcess, GetSelectedSizes(), svgHexColor, optimizationOptions, outputDir, new Progress<IconConversionProgress>(UpdateProgress));
-                HandleIcoConversionResult(result, outputDir);
-            });
-        }
-
-        private async void FaviconPackButton_Click(object sender, RoutedEventArgs e) => await HandleFaviconCreation(FileListView.SelectedItem as string);
-        private async void FaviconPackMenuItem_Click(object sender, RoutedEventArgs e) => await HandleFaviconCreation((sender as System.Windows.Controls.MenuItem)?.DataContext as string);
-
-        private async Task HandleFaviconCreation(string? inputFile)
-        {
-            var sourceFile = inputFile ?? _fileList.FirstOrDefault();
-            if (!AreInputsValid(isIcoConversion: false, singleFile: sourceFile)) return;
-
-            await RunConversionProcessAsync("Favicon", async (outputDir) =>
-            {
-                var svgHexColor = EnableSvgColorizationCheckBox.IsChecked == true ? SvgColorTextBox.Text : string.Empty;
-                var optimizationOptions = GetPngOptimizationOptions();
-
-                string? warning = await _converterService.CreateFaviconPackAsync(sourceFile!, svgHexColor, optimizationOptions, outputDir, new Progress<IconConversionProgress>(UpdateProgress));
-
-                var message = new StringBuilder();
-                message.AppendLine($"Favicon pack created successfully in:\n{outputDir}");
-                if (!string.IsNullOrEmpty(warning))
-                {
-                    message.AppendLine($"\n{warning}");
-                }
-                ShowMessageBox(message.ToString(), "Favicon Pack Created");
-                Process.Start("explorer.exe", outputDir);
-            });
-        }
-
-        private PngOptimizationOptions GetPngOptimizationOptions()
-        {
-            return new PngOptimizationOptions(
-                UseLossyCompressionCheckBox.IsChecked == true,
-                UseLosslessCompressionCheckBox.IsChecked == true,
-                (int)(ColorCountComboBox.SelectedItem ?? 256)
-            );
-        }
-
-        private async Task RunConversionProcessAsync(string type, Func<string, Task> conversionAction)
-        {
-            if (!TryGetOutputDirectory(type, out string outputDirectory)) return;
-
-            ProcessingOverlay.Visibility = Visibility.Visible;
             try
             {
-                await conversionAction(outputDirectory);
+                var report = _analyzerService.Analyze(filePath);
+                var reportText = FormatAnalysisReport(report);
+                ShowMessageBox(reportText, $"Analysis for {Path.GetFileName(filePath)}");
             }
             catch (Exception ex)
             {
-                ShowMessageBox($"An unexpected error occurred during conversion: {ex.Message}", "Fatal Error");
-            }
-            finally
-            {
-                ProcessingOverlay.Visibility = Visibility.Collapsed;
+                ShowMessageBox($"Failed to analyze ICO file: {ex.Message}", "Analysis Error");
             }
         }
 
-        private bool AreInputsValid(bool isIcoConversion, string? singleFile = null)
+        private string FormatAnalysisReport(IcoAnalysisReport report)
         {
-            var files = isIcoConversion ? _fileList.ToList() : (singleFile != null ? new List<string> { singleFile } : new List<string>());
-            if (!files.Any())
+            var sb = new StringBuilder();
+
+            var allFormats = report.Entries.Select(e => e.Format).Distinct().ToList();
+            var hasTransparency = report.Entries.Any(e => e.HasTransparency);
+
+            sb.AppendLine("--------- SUMMARY ---------");
+            sb.AppendLine($"File Size: {FormatBytes(report.FileSize)}");
+            sb.AppendLine($"Layers: {report.Directory?.Count ?? 0}");
+            sb.AppendLine($"Formats: {string.Join(", ", allFormats)}");
+            sb.AppendLine($"Transparency: {(hasTransparency ? "Yes" : "No")}");
+            sb.AppendLine();
+
+            sb.AppendLine("--------- ICONDIR (Header) ---------");
+            if (report.Directory != null)
             {
-                ShowMessageBox("Please add or select a file to convert.", "No File");
-                return false;
+                sb.AppendLine($"idReserved: {report.Directory.Reserved} (Must be 0)");
+                sb.AppendLine($"idType:     {report.Directory.Type} (1=ICO, 2=CUR)");
+                sb.AppendLine($"idCount:    {report.Directory.Count} (Number of images)");
             }
-            if (isIcoConversion && !GetSelectedSizes().Any())
+            sb.AppendLine();
+
+            sb.AppendLine("--------- ICONDIRENTRY (Image Directory) ---------");
+            int index = 0;
+            foreach (var entry in report.Entries)
             {
-                ShowMessageBox("Please select at least one icon size.", "No Sizes Selected");
-                return false;
+                sb.AppendLine($"\n[ ENTRY {index} ]");
+                sb.AppendLine($"  Dimensions:    {entry.Width}x{entry.Height} pixels");
+                sb.AppendLine($"  Bit Depth:     {entry.BitCount} bpp");
+                sb.AppendLine($"  Format:        {entry.Format}");
+                sb.AppendLine($"  --- Raw Values ---");
+                sb.AppendLine($"  bWidth:        {entry.RawWidth} (0 means 256)");
+                sb.AppendLine($"  bHeight:       {entry.RawHeight} (0 means 256)");
+                sb.AppendLine($"  bColorCount:   {entry.ColorCountPalette} (0 if no palette or >256 colors)");
+                sb.AppendLine($"  bReserved:     {entry.Reserved} (Should be 0)");
+                sb.AppendLine($"  wPlanes:       {entry.Planes} (Color planes, should be 0 or 1)");
+                sb.AppendLine($"  wBitCount:     {entry.BitCount} (Bits per pixel)");
+                sb.AppendLine($"  dwBytesInRes:  {entry.BytesInRes} bytes (Size of image data)");
+                sb.AppendLine($"  dwImageOffset: {entry.ImageOffset} (Offset to image data)");
+                index++;
             }
-            return true;
+
+            return sb.ToString();
         }
 
-        private bool TryGetOutputDirectory(string type, out string outputDirectory)
+        private static string FormatBytes(long bytes)
         {
-            string? baseOutputPath = (OutputCustom.IsChecked == true) ? _customOutputPath : Path.GetDirectoryName(_fileList.First());
-
-            if (string.IsNullOrEmpty(baseOutputPath))
-            {
-                ShowMessageBox("Could not determine the output directory.", "Output Error");
-                outputDirectory = string.Empty;
-                return false;
-            }
-
-            string timestamp = DateTime.Now.ToString("yyMMdd-HHmmss");
-            outputDirectory = Path.Combine(baseOutputPath, $"ICOforge-{type}-{timestamp}");
-            Directory.CreateDirectory(outputDirectory);
-            return true;
-        }
-
-        private void HandleIcoConversionResult(ConversionResult result, string outputDirectory)
-        {
-            var messageBuilder = new StringBuilder();
-            messageBuilder.AppendLine("Conversion complete!");
-            messageBuilder.AppendLine($"Successful: {result.SuccessfulFiles.Count}, Failed: {result.FailedFiles.Count}.");
-
-            if (result.FailedFiles.Any())
-            {
-                messageBuilder.AppendLine("\nFailures:");
-                string failedFilesSummary = string.Join("\n", result.FailedFiles.Take(10).Select(f => $"- {f.File}: {f.Error}"));
-                messageBuilder.AppendLine(failedFilesSummary);
-                if (result.FailedFiles.Count > 10)
-                {
-                    messageBuilder.AppendLine("- ...and more.");
-                }
-            }
-
-            ShowMessageBox(messageBuilder.ToString(), "Conversion Finished");
-
-            if (result.SuccessfulFiles.Any())
-            {
-                Process.Start("explorer.exe", outputDirectory);
-            }
-        }
-
-        private void UpdateProgress(IconConversionProgress progress)
-        {
-            ConversionProgressBar.Value = progress.Percentage;
-            ProgressFileText.Text = progress.CurrentFile;
-        }
-
-        private List<int> GetSelectedSizes()
-        {
-            var sizes = new List<int>();
-            if (Size16.IsChecked == true) sizes.Add(16);
-            if (Size24.IsChecked == true) sizes.Add(24);
-            if (Size32.IsChecked == true) sizes.Add(32);
-            if (Size48.IsChecked == true) sizes.Add(48);
-            if (Size64.IsChecked == true) sizes.Add(64);
-            if (Size72.IsChecked == true) sizes.Add(72);
-            if (Size96.IsChecked == true) sizes.Add(96);
-            if (Size128.IsChecked == true) sizes.Add(128);
-            if (Size256.IsChecked == true) sizes.Add(256);
-            return sizes;
+            string[] suf = { "B", "KB", "MB", "GB", "TB", "PB", "EB" };
+            if (bytes == 0) return "0 " + suf[0];
+            long absBytes = Math.Abs(bytes);
+            int place = Convert.ToInt32(Math.Floor(Math.Log(absBytes, 1024)));
+            double num = Math.Round(absBytes / Math.Pow(1024, place), 2);
+            return (Math.Sign(bytes) * num) + " " + suf[place];
         }
 
         private void ShowMessageBox(string message, string title)
         {
             Dispatcher.Invoke(() =>
             {
-                var messageBox = new Wpf.Ui.Controls.MessageBox { Title = title, Content = message, CloseButtonText = "OK" };
-                messageBox.ShowDialogAsync();
+                var scrollViewer = new ScrollViewer
+                {
+                    Content = new System.Windows.Controls.TextBox
+                    {
+                        Text = message,
+                        IsReadOnly = true,
+                        TextWrapping = TextWrapping.NoWrap,
+                        AcceptsReturn = true,
+                        VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                        HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                        FontFamily = new System.Windows.Media.FontFamily("Consolas"),
+                        FontSize = 12
+                    },
+                    MaxHeight = 400,
+                    MaxWidth = 600
+                };
+
+                var messageBox = new Wpf.Ui.Controls.MessageBox
+                {
+                    Title = title,
+                    Content = scrollViewer,
+                    CloseButtonText = "OK"
+                };
+                _ = messageBox.ShowDialogAsync();
             });
         }
-        #endregion
+
+        private void AboutPanel_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+        {
+            var aboutWindow = new AboutWindow
+            {
+                Owner = this
+            };
+            aboutWindow.ShowDialog();
+        }
     }
 }

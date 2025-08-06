@@ -21,8 +21,10 @@ namespace ICOforge
 
     public record OxiPngOptions
     {
-        public OxiPngOptimizationLevel OptimizationLevel { get; init; } = OxiPngOptimizationLevel.Level4;
+        public OxiPngOptimizationLevel OptimizationLevel { get; init; } = OxiPngOptimizationLevel.Level2;
         public OxiPngStripMode StripMode { get; init; } = OxiPngStripMode.Safe;
         public TimeSpan? Timeout { get; init; }
+        public bool NoColorTypeReduction { get; init; } = false;
+        public bool NoBitDepthReduction { get; init; } = false;
     }
 }
