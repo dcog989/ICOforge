@@ -9,6 +9,8 @@
         <Nullable>enable</Nullable>
         <ApplicationIcon>assets\icons\icoforge.ico</ApplicationIcon>
         <Platforms>x64</Platforms>
+        <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+        <PublishSingleFile>true</PublishSingleFile>
         <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
     </PropertyGroup>
 
