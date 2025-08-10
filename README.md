@@ -2,6 +2,8 @@
 
 ICOforge is a Windows utility for converting various image formats into multi-resolution `.ico` files. It supports SVG colorization and can produce Favicon packs for use with websites.
 
+[Download the latest release](https://github.com/dcog989/ICOforge/releases/latest) - it's portable!
+
 ![ICOforge](./assets/images/icoforge-screen-1.png)
 
 ## ✨ Features
