@@ -1,12 +1,12 @@
+using System.Collections.Concurrent;
+using System.IO;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Png;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 using SixLabors.ImageSharp.Processing.Processors.Quantization;
-using Svg.Skia;
-using System.Collections.Concurrent;
-using System.IO;
 using SkiaSharp;
+using Svg.Skia;
 
 namespace ICOforge
 {
@@ -89,7 +89,7 @@ namespace ICOforge
             return await Image.LoadAsync<Rgba32>(filePath);
         }
 
-        private async Task<Image<Rgba32>> LoadSvgAndApplyColorAsync(string filePath, int size, string svgHexColor)
+        private Task<Image<Rgba32>> LoadSvgAndApplyColorAsync(string filePath, int size, string svgHexColor)
         {
             using var svg = new SKSvg();
             if (svg.Load(filePath) == null)
@@ -102,10 +102,14 @@ namespace ICOforge
                 throw new InvalidDataException("The SVG file is invalid or could not be rendered.");
             }
 
-            using var bitmap = new SKBitmap(size, size);
+            var imageInfo = new SKImageInfo(size, size, SKColorType.Rgba8888, SKAlphaType.Premul);
+            using var bitmap = new SKBitmap(imageInfo);
             using var canvas = new SKCanvas(bitmap);
+
             canvas.Clear(SKColors.Transparent);
             var scaleMatrix = SKMatrix.CreateScale(size / svg.Picture.CullRect.Width, size / svg.Picture.CullRect.Height);
+            canvas.Save();
+            canvas.Concat(ref scaleMatrix);
 
             if (!string.IsNullOrWhiteSpace(svgHexColor) && SKColor.TryParse(svgHexColor, out var skColor))
             {
@@ -113,18 +117,16 @@ namespace ICOforge
                 {
                     ColorFilter = SKColorFilter.CreateBlendMode(skColor, SKBlendMode.SrcIn)
                 };
-                canvas.DrawPicture(svg.Picture, in scaleMatrix, paint);
+                canvas.DrawPicture(svg.Picture, paint);
             }
             else
             {
-                canvas.DrawPicture(svg.Picture, in scaleMatrix);
+                canvas.DrawPicture(svg.Picture);
             }
+            canvas.Restore();
 
-            using var stream = new MemoryStream();
-            bitmap.Encode(stream, SKEncodedImageFormat.Png, 100);
-            stream.Position = 0;
-
-            return await Image.LoadAsync<Rgba32>(stream);
+            var image = Image.LoadPixelData<Rgba32>(bitmap.GetPixelSpan(), size, size);
+            return Task.FromResult(image);
         }
 
         private async Task WriteIcoFileAsync(string outputPath, List<(byte[] Data, int Width, int Height)> pngs)

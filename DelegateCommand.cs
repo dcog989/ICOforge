@@ -1,23 +1,16 @@
-using System;
 using System.Windows.Input;
 
 namespace ICOforge
 {
-    public class DelegateCommand : ICommand
+    public class DelegateCommand(Action<object?> execute, Predicate<object?>? canExecute = null) : ICommand
     {
-        private readonly Action<object?> _execute;
-        private readonly Predicate<object?>? _canExecute;
+        private readonly Action<object?> _execute = execute ?? throw new ArgumentNullException(nameof(execute));
+        private readonly Predicate<object?>? _canExecute = canExecute;
 
         public event EventHandler? CanExecuteChanged
         {
             add => CommandManager.RequerySuggested += value;
             remove => CommandManager.RequerySuggested -= value;
-        }
-
-        public DelegateCommand(Action<object?> execute, Predicate<object?>? canExecute = null)
-        {
-            _execute = execute ?? throw new ArgumentNullException(nameof(execute));
-            _canExecute = canExecute;
         }
 
         public bool CanExecute(object? parameter)

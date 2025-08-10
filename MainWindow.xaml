@@ -58,8 +58,8 @@
                 MouseDown="DropZone_MouseDown">
                 <Border.ContextMenu>
                     <ContextMenu>
-                        <MenuItem Click="AddFilesMenuItem_Click" Header="Add Files..." />
-                        <MenuItem Click="AddFolderMenuItem_Click" Header="Add Folder..." />
+                        <MenuItem Command="{Binding AddFilesCommand}" Header="Add Files..." />
+                        <MenuItem Command="{Binding AddFolderCommand}" Header="Add Folder..." />
                     </ContextMenu>
                 </Border.ContextMenu>
                 <TextBlock
@@ -93,14 +93,10 @@
                 </ListView.ItemTemplate>
                 <ListView.ContextMenu>
                     <ContextMenu>
-                        <MenuItem Click="AddFilesMenuItem_Click" Header="Add Files..." />
-                        <MenuItem Click="AddFolderMenuItem_Click" Header="Add Folder..." />
+                        <MenuItem Command="{Binding AddFilesCommand}" Header="Add Files..." />
+                        <MenuItem Command="{Binding AddFolderCommand}" Header="Add Folder..." />
                         <Separator />
-                        <MenuItem
-                            x:Name="AnalyzeMenuItem"
-                            Click="AnalyzeMenuItem_Click"
-                            Header="Analyze Selected ICO"
-                            IsEnabled="False" />
+                        <MenuItem Command="{Binding AnalyzeIcoCommand}" Header="Analyze Selected ICO" />
                         <Separator />
                         <MenuItem Command="{Binding DeleteSelectedFilesCommand}" Header="Delete Selected" />
                         <MenuItem Command="{Binding ClearListCommand}" Header="Clear List" />
@@ -149,94 +145,24 @@
                         </TextBlock>
                     </StackPanel>
 
-                    <Grid Margin="10,10,0,0" IsEnabled="{Binding Options.IsIcoSizesEnabled}">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-                        <CheckBox
-                            Grid.Row="0"
-                            Grid.Column="0"
-                            Margin="0,0,0,5"
-                            Content="16x16"
-                            IsChecked="{Binding Options.Size16}" />
-                        <CheckBox
-                            Grid.Row="0"
-                            Grid.Column="1"
-                            Margin="0,0,0,5"
-                            Content="20x20"
-                            IsChecked="{Binding Options.Size20}" />
-                        <CheckBox
-                            Grid.Row="0"
-                            Grid.Column="2"
-                            Margin="0,0,0,5"
-                            Content="24x24"
-                            IsChecked="{Binding Options.Size24}" />
-
-                        <CheckBox
-                            Grid.Row="1"
-                            Grid.Column="0"
-                            Margin="0,0,0,5"
-                            Content="32x32"
-                            IsChecked="{Binding Options.Size32}" />
-                        <CheckBox
-                            Grid.Row="1"
-                            Grid.Column="1"
-                            Margin="0,0,0,5"
-                            Content="48x48"
-                            IsChecked="{Binding Options.Size48}" />
-                        <CheckBox
-                            Grid.Row="1"
-                            Grid.Column="2"
-                            Margin="0,0,0,5"
-                            Content="64x64"
-                            IsChecked="{Binding Options.Size64}" />
-
-                        <CheckBox
-                            Grid.Row="2"
-                            Grid.Column="0"
-                            Margin="0,0,0,5"
-                            Content="72x72"
-                            IsChecked="{Binding Options.Size72}" />
-                        <CheckBox
-                            Grid.Row="2"
-                            Grid.Column="1"
-                            Margin="0,0,0,5"
-                            Content="96x96"
-                            IsChecked="{Binding Options.Size96}" />
-                        <CheckBox
-                            Grid.Row="2"
-                            Grid.Column="2"
-                            Margin="0,0,0,5"
-                            Content="128x128"
-                            IsChecked="{Binding Options.Size128}" />
-
-                        <CheckBox
-                            Grid.Row="3"
-                            Grid.Column="0"
-                            Margin="0,0,0,5"
-                            Content="180x180"
-                            IsChecked="{Binding Options.Size180}" />
-                        <CheckBox
-                            Grid.Row="3"
-                            Grid.Column="1"
-                            Margin="0,0,0,5"
-                            Content="192x192"
-                            IsChecked="{Binding Options.Size192}" />
-                        <CheckBox
-                            Grid.Row="3"
-                            Grid.Column="2"
-                            Margin="0,0,0,5"
-                            Content="256x256"
-                            IsChecked="{Binding Options.Size256}" />
-                    </Grid>
+                    <ItemsControl
+                        Margin="10,10,0,0"
+                        IsEnabled="{Binding Options.IsIcoSizesEnabled}"
+                        ItemsSource="{Binding Options.IcoSizes}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <UniformGrid Columns="3" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <CheckBox
+                                    Margin="0,0,0,5"
+                                    Content="{Binding Label}"
+                                    IsChecked="{Binding IsSelected}" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
 
                     <StackPanel Margin="0,20,0,0" Orientation="Horizontal">
                         <TextBlock
@@ -264,8 +190,10 @@
                                 Width="{Binding ActualHeight, ElementName=SvgColorTextBox}"
                                 Height="{Binding ActualHeight, ElementName=SvgColorTextBox}"
                                 Margin="10,0,0,0"
-                                Cursor="Hand"
-                                PreviewMouseDown="OpenColorPicker_MouseDown">
+                                Cursor="Hand">
+                                <Grid.InputBindings>
+                                    <MouseBinding Command="{Binding OpenColorPickerCommand}" MouseAction="LeftClick" />
+                                </Grid.InputBindings>
                                 <Rectangle
                                     Fill="{Binding Path=Text, ElementName=SvgColorTextBox, Converter={StaticResource HexToBrushConverter}, FallbackValue=Gray}"
                                     RadiusX="4"
@@ -328,7 +256,7 @@
                         <TextBlock TextWrapping="Wrap">
                             <Run Text="Custom:" />
                             <Hyperlink
-                                Click="BrowseOutput_Click"
+                                Command="{Binding BrowseOutputCommand}"
                                 Foreground="#6bc2f5"
                                 TextDecorations="Underline">
                                 <Run Text="{Binding Options.CustomLocationText}" />

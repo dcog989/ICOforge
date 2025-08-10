@@ -15,14 +15,14 @@ namespace ICOforge
 
         public bool IsAvailable() => File.Exists(_exePath);
 
-        public async Task OptimizeAsync(string filePath, OxiPngOptions options)
+        public async Task OptimizeAsync(IEnumerable<string> filePaths, OxiPngOptions options)
         {
             if (!IsAvailable())
             {
                 throw new FileNotFoundException($"OxiPNG executable not found at the expected path: {_exePath}", _exePath);
             }
 
-            string arguments = BuildArguments(filePath, options);
+            string arguments = BuildArguments(filePaths, options);
 
             var processStartInfo = new ProcessStartInfo
             {
@@ -49,7 +49,7 @@ namespace ICOforge
             }
         }
 
-        private string BuildArguments(string filePath, OxiPngOptions options)
+        private string BuildArguments(IEnumerable<string> filePaths, OxiPngOptions options)
         {
             var sb = new StringBuilder();
 
@@ -88,7 +88,11 @@ namespace ICOforge
             }
 
             sb.Append("--quiet ");
-            sb.Append($"\"{filePath}\"");
+
+            foreach (var filePath in filePaths)
+            {
+                sb.Append($"\"{filePath}\" ");
+            }
 
             return sb.ToString();
         }

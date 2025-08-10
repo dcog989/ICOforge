@@ -9,20 +9,18 @@ namespace ICOforge
     {
         private readonly IconConverterService _converterService = new();
         private readonly FaviconPackGenerator _faviconPackGenerator;
+        private readonly IcoAnalyzerService _analyzerService = new();
+        private readonly IDialogService _dialogService;
 
-        public Action<string, string>? ShowMessageBoxAction { get; set; }
-        public Action<string>? OpenInExplorerAction { get; set; }
-
-        private List<string> _selectedFiles = new();
-
+        private List<string> _selectedFiles = [];
         private bool _isProcessing;
         private int _conversionProgress;
         private string _progressFileText = "Initializing...";
 
-        public ObservableCollection<string> FileList { get; } = new();
-        public List<string> SelectedFiles { get => _selectedFiles; set { if (SetProperty(ref _selectedFiles, value)) { CreateFilesCommand.RaiseCanExecuteChanged(); } } }
+        public ObservableCollection<string> FileList { get; } = [];
+        public List<string> SelectedFiles { get => _selectedFiles; set { if (SetProperty(ref _selectedFiles, value)) { OnSelectedFilesChanged(); } } }
 
-        public ConversionOptionsViewModel Options { get; }
+        public ConversionOptionsViewModel Options { get; } = new();
 
         public bool IsProcessing { get => _isProcessing; set => SetProperty(ref _isProcessing, value); }
         public int ConversionProgress { get => _conversionProgress; set => SetProperty(ref _conversionProgress, value); }
@@ -31,33 +29,43 @@ namespace ICOforge
         public bool IsDropZoneVisible => !FileList.Any();
         public bool IsFileListViewHitTestVisible => FileList.Any();
 
+        public DelegateCommand AddFilesCommand { get; }
+        public DelegateCommand AddFolderCommand { get; }
         public DelegateCommand DeleteSelectedFilesCommand { get; }
         public DelegateCommand ClearListCommand { get; }
         public DelegateCommand CreateFilesCommand { get; }
+        public DelegateCommand AnalyzeIcoCommand { get; }
+        public DelegateCommand BrowseOutputCommand { get; }
+        public DelegateCommand OpenColorPickerCommand { get; }
 
-        public MainWindowViewModel()
+        public MainWindowViewModel(IDialogService dialogService)
         {
-            Options = new ConversionOptionsViewModel();
+            _dialogService = dialogService;
             _faviconPackGenerator = new FaviconPackGenerator(_converterService);
 
+            AddFilesCommand = new DelegateCommand(_ => OnAddFiles());
+            AddFolderCommand = new DelegateCommand(_ => OnAddFolder());
             DeleteSelectedFilesCommand = new DelegateCommand(OnDeleteSelectedFiles, CanDeleteSelectedFiles);
-            ClearListCommand = new DelegateCommand(OnClearList);
+            ClearListCommand = new DelegateCommand(_ => OnClearList());
             CreateFilesCommand = new DelegateCommand(async (o) => await OnCreateFiles(), CanCreateFiles);
+            AnalyzeIcoCommand = new DelegateCommand(async _ => await OnAnalyzeIco(), CanAnalyzeIco);
+            BrowseOutputCommand = new DelegateCommand(_ => OnBrowseOutput());
+            OpenColorPickerCommand = new DelegateCommand(_ => OnOpenColorPicker());
 
             FileList.CollectionChanged += (s, e) =>
             {
                 OnPropertyChanged(nameof(IsDropZoneVisible));
                 OnPropertyChanged(nameof(IsFileListViewHitTestVisible));
                 CreateFilesCommand.RaiseCanExecuteChanged();
+                DeleteSelectedFilesCommand.RaiseCanExecuteChanged();
             };
+        }
 
-            Options.PropertyChanged += (s, e) =>
-            {
-                if (e.PropertyName == nameof(Options.SelectedProfile))
-                {
-                    CreateFilesCommand.RaiseCanExecuteChanged();
-                }
-            };
+        private void OnSelectedFilesChanged()
+        {
+            CreateFilesCommand.RaiseCanExecuteChanged();
+            DeleteSelectedFilesCommand.RaiseCanExecuteChanged();
+            AnalyzeIcoCommand.RaiseCanExecuteChanged();
         }
 
         public void AddFilesToList(IEnumerable<string> files)
@@ -73,7 +81,47 @@ namespace ICOforge
             }
             if (addedFiles.Any())
             {
-                SelectedFiles = new List<string>(addedFiles);
+                SelectedFiles = [.. addedFiles];
+            }
+        }
+
+        private void OnAddFiles()
+        {
+            var files = _dialogService.ShowOpenFileDialog();
+            if (files != null)
+            {
+                AddFilesToList(files);
+            }
+        }
+
+        private void OnAddFolder()
+        {
+            var folder = _dialogService.ShowFolderPickerDialog();
+            if (!string.IsNullOrEmpty(folder))
+            {
+                string[] validImageExtensions = [".png", ".jpg", ".jpeg", ".bmp", ".gif", ".svg", ".webp", ".tif", ".tiff"];
+                var files = Directory.EnumerateFiles(folder, "*.*", SearchOption.AllDirectories)
+                                     .Where(f => validImageExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()));
+                AddFilesToList(files);
+            }
+        }
+
+        private void OnBrowseOutput()
+        {
+            Options.IsOutputToSource = false;
+            var path = _dialogService.ShowSaveDialog();
+            if (!string.IsNullOrEmpty(path))
+            {
+                Options.CustomOutputPath = path;
+            }
+        }
+
+        private void OnOpenColorPicker()
+        {
+            var newColor = _dialogService.ShowColorPickerDialog(Options.SvgColor);
+            if (!string.IsNullOrEmpty(newColor))
+            {
+                Options.SvgColor = newColor;
             }
         }
 
@@ -84,11 +132,11 @@ namespace ICOforge
             {
                 FileList.Remove(item);
             }
-            SelectedFiles = new List<string>();
+            SelectedFiles = [];
         }
         private bool CanDeleteSelectedFiles(object? parameter) => SelectedFiles.Any();
 
-        private void OnClearList(object? parameter) => FileList.Clear();
+        private void OnClearList() => FileList.Clear();
 
         private bool CanCreateFiles(object? parameter)
         {
@@ -98,6 +146,33 @@ namespace ICOforge
                 return SelectedFiles.Count == 1;
             }
             return true;
+        }
+
+        private bool CanAnalyzeIco(object? parameter)
+        {
+            return SelectedFiles.Count == 1 &&
+                   Path.GetExtension(SelectedFiles.FirstOrDefault() ?? string.Empty)
+                       .Equals(".ico", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private async Task OnAnalyzeIco()
+        {
+            if (SelectedFiles.FirstOrDefault() is not string filePath) return;
+
+            try
+            {
+                IcoAnalysisReport? report = await Task.Run(() => _analyzerService.Analyze(filePath));
+
+                if (report != null)
+                {
+                    var reportText = FormatAnalysisReport(report);
+                    _dialogService.ShowAnalysisReport(reportText, $"Analysis for {Path.GetFileName(filePath)}");
+                }
+            }
+            catch (Exception ex)
+            {
+                _dialogService.ShowMessageBox($"Failed to analyze ICO file: {ex.Message}", "Analysis Error");
+            }
         }
 
         private async Task OnCreateFiles()
@@ -118,7 +193,7 @@ namespace ICOforge
             }
             catch (Exception ex)
             {
-                ShowMessageBoxAction?.Invoke($"An unexpected error occurred during conversion: {ex.Message}", "Fatal Error");
+                _dialogService.ShowMessageBox($"An unexpected error occurred during conversion: {ex.Message}", "Fatal Error");
             }
             finally
             {
@@ -130,7 +205,7 @@ namespace ICOforge
         {
             if (!TryGetOutputDirectory("ICO", out string outputDir)) return;
 
-            var filesToProcess = SelectedFiles.Any() ? SelectedFiles : new List<string>(FileList);
+            var filesToProcess = SelectedFiles.Any() ? new List<string>(SelectedFiles) : [.. FileList];
             var result = await _converterService.ConvertImagesToIcoAsync(filesToProcess, Options.GetSelectedSizes(), Options.GetSvgHexColor(), Options.GetPngOptimizationOptions(), outputDir, new Progress<IconConversionProgress>(UpdateProgress));
             HandleIcoConversionResult(result, outputDir);
         }
@@ -140,10 +215,10 @@ namespace ICOforge
             if (!TryGetOutputDirectory("FaviconPack", out string outputDir)) return;
 
             await _faviconPackGenerator.CreateAsync(inputFile, Options.GetSelectedSizes(), Options.GetSvgHexColor(), Options.GetPngOptimizationOptions(), outputDir, new Progress<IconConversionProgress>(UpdateProgress));
-            ShowMessageBoxAction?.Invoke($"Favicon pack created successfully in:\n{outputDir}", "Favicon Pack Created");
+            _dialogService.ShowMessageBox($"Favicon pack created successfully in:\n{outputDir}", "Favicon Pack Created");
             if (!string.IsNullOrEmpty(outputDir))
             {
-                OpenInExplorerAction?.Invoke(outputDir);
+                _dialogService.OpenInExplorer(outputDir);
             }
         }
 
@@ -153,7 +228,7 @@ namespace ICOforge
 
             if (string.IsNullOrEmpty(baseOutputPath))
             {
-                ShowMessageBoxAction?.Invoke("Could not determine the output directory.", "Output Error");
+                _dialogService.ShowMessageBox("Could not determine the output directory.", "Output Error");
                 outputDirectory = string.Empty;
                 return false;
             }
@@ -167,7 +242,7 @@ namespace ICOforge
             }
             catch (Exception ex)
             {
-                ShowMessageBoxAction?.Invoke($"Could not create output directory:\n{outputDirectory}\n\nError: {ex.Message}\n\nPlease check your permissions or select a custom output location.", "Output Error");
+                _dialogService.ShowMessageBox($"Could not create output directory:\n{outputDirectory}\n\nError: {ex.Message}\n\nPlease check your permissions or select a custom output location.", "Output Error");
                 outputDirectory = string.Empty;
                 return false;
             }
@@ -177,12 +252,12 @@ namespace ICOforge
         {
             if (Options.SelectedProfile.Type == OutputProfileType.FaviconPack && SelectedFiles.Count != 1)
             {
-                ShowMessageBoxAction?.Invoke("Please select a single file to create a Favicon Pack from.", "No File Selected");
+                _dialogService.ShowMessageBox("Please select a single file to create a Favicon Pack from.", "No File Selected");
                 return false;
             }
             if (!Options.GetSelectedSizes().Any())
             {
-                ShowMessageBoxAction?.Invoke("Please select at least one icon size.", "No Sizes Selected");
+                _dialogService.ShowMessageBox("Please select at least one icon size.", "No Sizes Selected");
                 return false;
             }
             return true;
@@ -210,12 +285,66 @@ namespace ICOforge
                     messageBuilder.AppendLine("- ...and more.");
                 }
             }
-            ShowMessageBoxAction?.Invoke(messageBuilder.ToString(), "Conversion Finished");
+            _dialogService.ShowMessageBox(messageBuilder.ToString(), "Conversion Finished");
 
             if (result.SuccessfulFiles.Any())
             {
-                OpenInExplorerAction?.Invoke(outputDirectory);
+                _dialogService.OpenInExplorer(outputDirectory);
             }
+        }
+
+        private string FormatAnalysisReport(IcoAnalysisReport report)
+        {
+            var sb = new StringBuilder();
+            var allFormats = report.Entries.Select(e => e.Format).Distinct().ToList();
+            var hasTransparency = report.Entries.Any(e => e.HasTransparency);
+
+            sb.AppendLine("--------- SUMMARY ---------");
+            sb.AppendLine($"File Size: {FormatBytes(report.FileSize)}");
+            sb.AppendLine($"Layers: {report.Directory?.Count ?? 0}");
+            sb.AppendLine($"Formats: {string.Join(", ", allFormats)}");
+            sb.AppendLine($"Transparency: {(hasTransparency ? "Yes" : "No")}");
+            sb.AppendLine();
+
+            sb.AppendLine("--------- ICONDIR (Header) ---------");
+            if (report.Directory != null)
+            {
+                sb.AppendLine($"idReserved: {report.Directory.Reserved} (Must be 0)");
+                sb.AppendLine($"idType:     {report.Directory.Type} (1=ICO, 2=CUR)");
+                sb.AppendLine($"idCount:    {report.Directory.Count} (Number of images)");
+            }
+            sb.AppendLine();
+
+            sb.AppendLine("--------- ICONDIRENTRY (Image Directory) ---------");
+            int index = 0;
+            foreach (var entry in report.Entries)
+            {
+                sb.AppendLine($"\n[ ENTRY {index} ]");
+                sb.AppendLine($"  Dimensions:    {entry.Width}x{entry.Height} pixels");
+                sb.AppendLine($"  Bit Depth:     {entry.BitCount} bpp");
+                sb.AppendLine($"  Format:        {entry.Format}");
+                sb.AppendLine($"  --- Raw Values ---");
+                sb.AppendLine($"  bWidth:        {entry.RawWidth} (0 means 256)");
+                sb.AppendLine($"  bHeight:       {entry.RawHeight} (0 means 256)");
+                sb.AppendLine($"  bColorCount:   {entry.ColorCountPalette} (0 if no palette or >256 colors)");
+                sb.AppendLine($"  bReserved:     {entry.Reserved} (Should be 0)");
+                sb.AppendLine($"  wPlanes:       {entry.Planes} (Color planes, should be 0 or 1)");
+                sb.AppendLine($"  wBitCount:     {entry.BitCount} (Bits per pixel)");
+                sb.AppendLine($"  dwBytesInRes:  {entry.BytesInRes} bytes (Size of image data)");
+                sb.AppendLine($"  dwImageOffset: {entry.ImageOffset} (Offset to image data)");
+                index++;
+            }
+            return sb.ToString();
+        }
+
+        private static string FormatBytes(long bytes)
+        {
+            string[] suf = ["B", "KB", "MB", "GB", "TB", "PB", "EB"];
+            if (bytes == 0) return "0 " + suf[0];
+            long absBytes = Math.Abs(bytes);
+            int place = Convert.ToInt32(Math.Floor(Math.Log(absBytes, 1024)));
+            double num = Math.Round(absBytes / Math.Pow(1024, place), 2);
+            return (Math.Sign(bytes) * num) + " " + suf[place];
         }
     }
 }

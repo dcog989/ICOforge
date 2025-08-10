@@ -28,6 +28,6 @@ This application is built using a modern Windows stack:
 
 ## Reference Docs
 
-- https://learn.microsoft.com/en-us/windows/win32/uxguide/vis-icons
-- https://en.wikipedia.org/wiki/ICO_(file_format)
-- https://docs.fileformat.com/image/ico/
+- <https://learn.microsoft.com/en-us/windows/win32/uxguide/vis-icons>
+- <https://en.wikipedia.org/wiki/ICO_(file_format)>
+- <https://docs.fileformat.com/image/ico/>

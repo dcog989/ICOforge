@@ -1,8 +1,4 @@
-using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Text;
 
 namespace ICOforge
 {
@@ -82,7 +78,7 @@ namespace ICOforge
             {
                 stream.Seek(entry.ImageOffset, SeekOrigin.Begin);
                 var headerBytes = new byte[8];
-                stream.Read(headerBytes, 0, 8);
+                stream.ReadExactly(headerBytes);
                 entry.IsPng = headerBytes.SequenceEqual(PngSignature);
             }
 
