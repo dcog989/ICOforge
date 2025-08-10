@@ -12,6 +12,7 @@
         <RuntimeIdentifier>win-x64</RuntimeIdentifier>
         <PublishSingleFile>true</PublishSingleFile>
         <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+
     </PropertyGroup>
 
     <ItemGroup>
