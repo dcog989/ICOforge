@@ -13,7 +13,7 @@ $Script:RequiredDotNetVersion = "9"                 # major version number.
 $Script:TargetFramework = "net9.0-windows"          # from project `.csproj` file.
 $Script:BuildPlatform = "x64"                       # target build platform (e.g., x64, AnyCPU).
 $Script:PublishRuntimeId = "win-x64"                # target runtime for publishing.
-$Script:UseVelopack = $true                         # use Velopack for production builds, $false to use 7-Zip.
+$Script:UseVelopack = $false                        # use Velopack for production builds, $false to use 7-Zip.
 $Script:VelopackChannelName = "prod"                # release channel (e.g., 'prod', 'staging').
 
 
