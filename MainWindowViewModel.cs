@@ -11,6 +11,7 @@ namespace ICOforge
         private readonly FaviconPackGenerator _faviconPackGenerator;
         private readonly IcoAnalyzerService _analyzerService = new();
         private readonly IDialogService _dialogService;
+        private readonly HashSet<string> _fileSet = new(StringComparer.OrdinalIgnoreCase);
 
         private List<string> _selectedFiles = [];
         private bool _isProcessing;
@@ -73,7 +74,7 @@ namespace ICOforge
             var addedFiles = new List<string>();
             foreach (var file in files)
             {
-                if (!FileList.Contains(file))
+                if (_fileSet.Add(file))
                 {
                     FileList.Add(file);
                     addedFiles.Add(file);
@@ -131,12 +132,17 @@ namespace ICOforge
             foreach (var item in itemsToRemove)
             {
                 FileList.Remove(item);
+                _fileSet.Remove(item);
             }
             SelectedFiles = [];
         }
         private bool CanDeleteSelectedFiles(object? parameter) => SelectedFiles.Any();
 
-        private void OnClearList() => FileList.Clear();
+        private void OnClearList()
+        {
+            FileList.Clear();
+            _fileSet.Clear();
+        }
 
         private bool CanCreateFiles(object? parameter)
         {
