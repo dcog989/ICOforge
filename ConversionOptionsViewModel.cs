@@ -1,3 +1,4 @@
+// File: ConversionOptionsViewModel.cs
 using System.Collections.ObjectModel;
 using ICOforge.ViewModels;
 
@@ -30,7 +31,22 @@ namespace ICOforge
         public int SelectedColorCount { get => _selectedColorCount; set => SetProperty(ref _selectedColorCount, value); }
         public bool IsOutputToSource { get => _isOutputToSource; set => SetProperty(ref _isOutputToSource, value); }
         public string CustomLocationText { get => _customLocationText; set => SetProperty(ref _customLocationText, value); }
-        public string CustomOutputPath { get => _customOutputPath; set { if (SetProperty(ref _customOutputPath, value)) { CustomLocationText = System.IO.Path.GetFileName(_customOutputPath.TrimEnd(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar)); } } }
+
+        public string CustomOutputPath
+        {
+            get => _customOutputPath;
+            set
+            {
+                if (SetProperty(ref _customOutputPath, value))
+                {
+                    var trimmedPath = value.TrimEnd(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar);
+                    var folderName = System.IO.Path.GetFileName(trimmedPath);
+
+                    // Use the folder name, falling back to the full trimmed path (e.g., "C:") if the name is empty (drive root).
+                    CustomLocationText = string.IsNullOrEmpty(folderName) ? trimmedPath : folderName;
+                }
+            }
+        }
 
         public ConversionOptionsViewModel()
         {
