@@ -52,13 +52,27 @@ namespace ICOforge
             var allSizes = new[] { 16, 20, 24, 32, 48, 64, 72, 96, 128, 180, 192, 256 };
             foreach (var size in allSizes)
             {
-                IcoSizes.Add(new SizeViewModel(size, onSelectionChanged: OnIcoSizeChanged));
+                var sizeVM = new SizeViewModel(size);
+                sizeVM.PropertyChanged += OnIcoSizeViewModelPropertyChanged;
+                IcoSizes.Add(sizeVM);
             }
 
             Profiles = OutputProfile.GetAvailableProfiles();
             SelectedProfile = Profiles.First(p => p.Type == OutputProfileType.StandardIco);
             SelectedColorCount = ColorOptions.Last();
             CustomOutputPath = NativeMethods.GetDownloadsPath();
+        }
+
+        private void OnIcoSizeViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(SizeViewModel.IsSelected) && !_isUpdatingFromProfile)
+            {
+                // If a size selection changes manually, switch the profile to Custom ICO
+                if (SelectedProfile.Type != OutputProfileType.CustomIco && SelectedProfile.Type != OutputProfileType.FaviconPack)
+                {
+                    SelectedProfile = Profiles.First(p => p.Type == OutputProfileType.CustomIco);
+                }
+            }
         }
 
         private void OnProfileChanged()
@@ -76,16 +90,6 @@ namespace ICOforge
             }
 
             _isUpdatingFromProfile = false;
-        }
-
-        private void OnIcoSizeChanged()
-        {
-            if (_isUpdatingFromProfile) return;
-
-            if (SelectedProfile.Type != OutputProfileType.CustomIco && SelectedProfile.Type != OutputProfileType.FaviconPack)
-            {
-                SelectedProfile = Profiles.First(p => p.Type == OutputProfileType.CustomIco);
-            }
         }
 
         public List<int> GetSelectedSizes()

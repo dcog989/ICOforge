@@ -1,12 +1,16 @@
-using ICOforge.ViewModels;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 
 namespace ICOforge
 {
-    public class SizeViewModel(int size, bool isSelected = false, Action? onSelectionChanged = null) : ViewModelBase
+    public class SizeViewModel : INotifyPropertyChanged
     {
-        private bool _isSelected = isSelected;
+        private bool _isSelected;
 
-        public int Size { get; } = size;
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        public int Size { get; }
+
         public string Label => $"{Size}x{Size}";
 
         public bool IsSelected
@@ -16,9 +20,28 @@ namespace ICOforge
             {
                 if (SetProperty(ref _isSelected, value))
                 {
-                    onSelectionChanged?.Invoke();
+                    // Selection change logic moved to the parent view model (ConversionOptionsViewModel)
                 }
             }
+        }
+
+        public SizeViewModel(int size, bool isSelected = false)
+        {
+            Size = size;
+            _isSelected = isSelected;
+        }
+
+        protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+
+        protected bool SetProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
+        {
+            if (EqualityComparer<T>.Default.Equals(field, value)) return false;
+            field = value;
+            OnPropertyChanged(propertyName);
+            return true;
         }
     }
 }
