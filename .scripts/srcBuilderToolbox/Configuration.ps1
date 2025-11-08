@@ -3,11 +3,11 @@
 # -----------------------------------------------------------------------------
 # * Edit these settings...
 # -----------------------------------------------------------------------------
-$Script:PackageTitle = "Cliptoo"                    # user-facing name of the application.
-$Script:MainProjectName = "Cliptoo.UI"              # name of the main .csproj file (without the extension).
-$Script:SolutionFileName = "Cliptoo.sln"            # name of the .sln file.
+$Script:PackageTitle = "ICOforge"                    # user-facing name of the application.
+$Script:MainProjectName = "ICOforge"              # name of the main .csproj file (without the extension).
+$Script:SolutionFileName = "ICOforge.sln"            # name of the .sln file.
 $Script:SolutionSubFolder = ""                      # folder containing the .sln file, relative to repo root. Set to "" if .sln is at the root.
-$Script:MainProjectSourcePath = "Cliptoo.UI"        # path from the solution folder to the main project's folder.
+$Script:MainProjectSourcePath = ""        # path from the solution folder to the main project's folder.
 $Script:PackageAuthors = "dcog989"                  # author's name.
 $Script:RequiredDotNetVersion = "9"                 # major version number.
 $Script:TargetFramework = "net9.0-windows"          # from project `.csproj` file.
