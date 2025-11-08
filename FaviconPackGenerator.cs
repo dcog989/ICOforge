@@ -31,7 +31,15 @@ namespace ICOforge
             await OptimizePngsAsync(generatedPngPaths, optimizationOptions);
 
             progress.Report(new IconConversionProgress { Percentage = 70, CurrentFile = "Generating ICO..." });
+            string sourceIcoFileName = $"{Path.GetFileNameWithoutExtension(filePath)}.ico";
+            string initialIcoPath = Path.Combine(outputDirectory, sourceIcoFileName);
+            string finalIcoPath = Path.Combine(outputDirectory, "favicon.ico");
             await converterService.ConvertImagesToIcoAsync([filePath], icoSizes, svgHexColor, optimizationOptions, outputDirectory, new Progress<IconConversionProgress>());
+
+            if (File.Exists(initialIcoPath))
+            {
+                File.Move(initialIcoPath, finalIcoPath, true);
+            }
 
             progress.Report(new IconConversionProgress { Percentage = 80, CurrentFile = "Copying SVG..." });
             if (Path.GetExtension(filePath).Equals(".svg", StringComparison.OrdinalIgnoreCase))
