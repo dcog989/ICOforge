@@ -1,4 +1,3 @@
-// File: ConversionOptionsViewModel.cs
 using System.Collections.ObjectModel;
 using ICOforge.ViewModels;
 
