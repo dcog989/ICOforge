@@ -5,6 +5,7 @@
 .config/
 .docs/
 .git/
+.github/
 .repomixignore
 .test/
 .vs/
