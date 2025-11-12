@@ -4,6 +4,7 @@
 .assets/
 .config/
 .docs/
+.editorconfig
 .git/
 .github/
 .repomixignore
