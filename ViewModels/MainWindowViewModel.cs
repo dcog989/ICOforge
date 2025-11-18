@@ -222,9 +222,31 @@ namespace ICOforge.ViewModels
         {
             if (!TryGetOutputDirectory("FaviconPack", out string outputDir)) return;
 
-            await _faviconPackGenerator.CreateAsync(inputFile, Options.GetSelectedSizes(), Options.GetSvgHexColor(), Options.GetPngOptimizationOptions(), outputDir, new Progress<IconConversionProgress>(UpdateProgress));
-            _dialogService.ShowMessageBox($"Favicon pack created successfully in:\n{outputDir}", "Favicon Pack Created");
-            if (!string.IsNullOrEmpty(outputDir))
+            var result = await _faviconPackGenerator.CreateAsync(inputFile, Options.GetSelectedSizes(), Options.GetSvgHexColor(), Options.GetPngOptimizationOptions(), outputDir, new Progress<IconConversionProgress>(UpdateProgress));
+
+            var messageBuilder = new StringBuilder();
+
+            if (!result.Success)
+            {
+                messageBuilder.AppendLine("Favicon pack creation failed.");
+                messageBuilder.AppendLine($"Error: {result.OptimizationError ?? "An unknown error occurred."}");
+            }
+            else
+            {
+                messageBuilder.AppendLine("Favicon pack created successfully!");
+                messageBuilder.AppendLine($"Location:\n{outputDir}");
+
+                if (result.OptimizationError != null)
+                {
+                    messageBuilder.AppendLine("\n--- Warning ---");
+                    messageBuilder.AppendLine(result.OptimizationError);
+                    messageBuilder.AppendLine("The pack was created, but PNG optimization failed.");
+                }
+            }
+
+            _dialogService.ShowMessageBox(messageBuilder.ToString(), "Favicon Pack Creation");
+
+            if (result.Success && !string.IsNullOrEmpty(outputDir))
             {
                 _dialogService.OpenInExplorer(outputDir);
             }

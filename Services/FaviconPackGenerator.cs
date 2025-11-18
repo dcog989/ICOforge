@@ -6,11 +6,13 @@ using ICOforge.Models;
 
 namespace ICOforge.Services
 {
+    public record FaviconPackResult(bool Success, string? OptimizationError);
+
     public class FaviconPackGenerator(IconConverterService converterService)
     {
         private readonly OxiPngOptimizer _optimizer = new();
 
-        public async Task CreateAsync(string filePath, List<int> icoSizes, string svgHexColor, PngOptimizationOptions optimizationOptions, string outputDirectory, IProgress<IconConversionProgress> progress)
+        public async Task<FaviconPackResult> CreateAsync(string filePath, List<int> icoSizes, string svgHexColor, PngOptimizationOptions optimizationOptions, string outputDirectory, IProgress<IconConversionProgress> progress)
         {
             progress.Report(new IconConversionProgress { Percentage = 10, CurrentFile = "Creating directories..." });
             string iconsDir = Path.Combine(outputDirectory, "icons");
@@ -29,13 +31,20 @@ namespace ICOforge.Services
             var generatedPngPaths = await Task.WhenAll(pngTasks);
 
             progress.Report(new IconConversionProgress { Percentage = 60, CurrentFile = "Optimizing PNGs..." });
-            await OptimizePngsAsync(generatedPngPaths, optimizationOptions);
+            string? optimizationError = await OptimizePngsAsync(generatedPngPaths, optimizationOptions);
 
             progress.Report(new IconConversionProgress { Percentage = 70, CurrentFile = "Generating ICO..." });
             string sourceIcoFileName = $"{Path.GetFileNameWithoutExtension(filePath)}.ico";
             string initialIcoPath = Path.Combine(outputDirectory, sourceIcoFileName);
             string finalIcoPath = Path.Combine(outputDirectory, "favicon.ico");
-            await converterService.ConvertImagesToIcoAsync([filePath], icoSizes, svgHexColor, optimizationOptions, outputDirectory, new Progress<IconConversionProgress>());
+            var icoConversionResult = await converterService.ConvertImagesToIcoAsync([filePath], icoSizes, svgHexColor, optimizationOptions, outputDirectory, new Progress<IconConversionProgress>());
+
+            if (icoConversionResult.FailedFiles.Any())
+            {
+                // ICO conversion is a critical part of the pack, so treat its failure as a pack failure.
+                var firstError = icoConversionResult.FailedFiles.First();
+                return new FaviconPackResult(false, $"ICO conversion failed for {firstError.File}: {firstError.Error}");
+            }
 
             if (File.Exists(initialIcoPath))
             {
@@ -50,6 +59,9 @@ namespace ICOforge.Services
 
             progress.Report(new IconConversionProgress { Percentage = 90, CurrentFile = "Generating HTML..." });
             await SaveHtmlFileAsync(Path.Combine(outputDirectory, "index.html"));
+
+            progress.Report(new IconConversionProgress { Percentage = 100, CurrentFile = "Done!" });
+            return new FaviconPackResult(true, optimizationError);
         }
 
         private async Task<string> CreateAndSavePngAsync(string filePath, int size, string svgHexColor, string outputPath, PngOptimizationOptions optimizationOptions)
@@ -59,7 +71,7 @@ namespace ICOforge.Services
             return outputPath;
         }
 
-        private async Task OptimizePngsAsync(IEnumerable<string> paths, PngOptimizationOptions optimizationOptions)
+        private async Task<string?> OptimizePngsAsync(IEnumerable<string> paths, PngOptimizationOptions optimizationOptions)
         {
             var oxiOptions = new OxiPngOptions
             {
@@ -70,10 +82,12 @@ namespace ICOforge.Services
             try
             {
                 await _optimizer.OptimizeAsync(paths, oxiOptions);
+                return null;
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"OxiPNG optimization failed: {ex.Message}");
+                return $"PNG optimization failed: {ex.Message}";
             }
         }
 
