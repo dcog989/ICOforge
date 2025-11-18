@@ -185,11 +185,11 @@ namespace ICOforge.ViewModels
 
         private async Task OnCreateFiles()
         {
-            if (!AreInputsValid()) return;
-
             IsProcessing = true;
             try
             {
+                if (!AreInputsValid()) return;
+
                 if (Options.SelectedProfile.Type == OutputProfileType.FaviconPack)
                 {
                     await HandleFaviconCreation(SelectedFiles.First());
