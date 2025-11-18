@@ -1,7 +1,6 @@
 using System.Collections.ObjectModel;
 using ICOforge.Models;
 using ICOforge.Services;
-using ICOforge.Utilities;
 
 namespace ICOforge.ViewModels
 {
