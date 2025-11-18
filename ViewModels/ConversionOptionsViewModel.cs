@@ -7,6 +7,7 @@ namespace ICOforge.ViewModels
 {
     public class ConversionOptionsViewModel : ViewModelBase
     {
+        private readonly SettingsService _settingsService;
         private List<OutputProfile> _profiles = null!;
         private OutputProfile _selectedProfile = null!;
         private bool _isUpdatingFromProfile;
@@ -45,12 +46,17 @@ namespace ICOforge.ViewModels
 
                     // Use the folder name, falling back to the full trimmed path (e.g., "C:") if the name is empty (drive root).
                     CustomLocationText = string.IsNullOrEmpty(folderName) ? trimmedPath : folderName;
+
+                    // Save the last output path to settings
+                    _settingsService.Settings.LastOutputDirectory = trimmedPath;
+                    _settingsService.SaveSettings();
                 }
             }
         }
 
-        public ConversionOptionsViewModel()
+        public ConversionOptionsViewModel(SettingsService settingsService)
         {
+            _settingsService = settingsService;
             var allSizes = new[] { 16, 20, 24, 32, 48, 64, 72, 96, 128, 180, 192, 256 };
             foreach (var size in allSizes)
             {
@@ -62,7 +68,7 @@ namespace ICOforge.ViewModels
             Profiles = OutputProfile.GetAvailableProfiles();
             SelectedProfile = Profiles.First(p => p.Type == OutputProfileType.StandardIco);
             SelectedColorCount = ColorOptions.Last();
-            CustomOutputPath = NativeMethods.GetDownloadsPath();
+            CustomOutputPath = _settingsService.Settings.LastOutputDirectory;
         }
 
         private void OnIcoSizeViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)

@@ -23,7 +23,7 @@ namespace ICOforge.ViewModels
         public ObservableCollection<string> FileList { get; } = [];
         public List<string> SelectedFiles { get => _selectedFiles; set { if (SetProperty(ref _selectedFiles, value)) { OnSelectedFilesChanged(); } } }
 
-        public ConversionOptionsViewModel Options { get; } = new();
+        public ConversionOptionsViewModel Options { get; }
 
         public bool IsProcessing { get => _isProcessing; set => SetProperty(ref _isProcessing, value); }
         public int ConversionProgress { get => _conversionProgress; set => SetProperty(ref _conversionProgress, value); }
@@ -45,6 +45,9 @@ namespace ICOforge.ViewModels
         {
             _dialogService = dialogService;
             _faviconPackGenerator = new FaviconPackGenerator(_converterService);
+            var settingsService = new SettingsService();
+
+            Options = new ConversionOptionsViewModel(settingsService);
 
             AddFilesCommand = new DelegateCommand(_ => OnAddFiles());
             AddFolderCommand = new DelegateCommand(_ => OnAddFolder());
