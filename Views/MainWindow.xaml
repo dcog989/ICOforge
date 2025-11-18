@@ -20,6 +20,7 @@
     <Window.Resources>
         <local:HexToBrushConverter x:Key="HexToBrushConverter" />
         <local:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <local:InverseBooleanConverter x:Key="InverseBooleanConverter" />
         <Style x:Key="HelpTextStyle" TargetType="TextBlock">
             <Setter Property="Text" Value="(?)" />
             <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
@@ -260,7 +261,10 @@
                         Content="Same as source"
                         GroupName="OutputLocation"
                         IsChecked="{Binding Options.IsOutputToSource}" />
-                    <RadioButton Margin="20,5,0,0" GroupName="OutputLocation">
+                    <RadioButton
+                        Margin="20,5,0,0"
+                        GroupName="OutputLocation"
+                        IsChecked="{Binding Options.IsOutputToSource, Converter={StaticResource InverseBooleanConverter}}">
                         <TextBlock TextWrapping="Wrap">
                             <Run Text="Custom:" />
                             <Hyperlink
