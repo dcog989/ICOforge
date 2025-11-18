@@ -6,9 +6,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using ICOforge.Services;
-// Removed: using ICOforge.Utilities; // Handled implicitly or via MainWindowViewModel
 using ICOforge.ViewModels;
-using Microsoft.WindowsAPICodePack.Dialogs;
 using Wpf.Ui.Controls;
 
 namespace ICOforge.Views
@@ -16,12 +14,13 @@ namespace ICOforge.Views
     public partial class MainWindow : FluentWindow, IDialogService
     {
         private readonly MainWindowViewModel _viewModel;
-        private static readonly string[] ValidImageExtensions = { ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".svg", ".webp", ".tif", ".tiff" };
+        private readonly ModernDialogService _dialogService;
 
         public MainWindow()
         {
             InitializeComponent();
-            _viewModel = new MainWindowViewModel(this);
+            _dialogService = new ModernDialogService(this);
+            _viewModel = new MainWindowViewModel(_dialogService);
             DataContext = _viewModel;
             Loaded += OnMainWindowLoaded;
         }
@@ -100,113 +99,37 @@ namespace ICOforge.Views
 
         public IEnumerable<string>? ShowOpenFileDialog()
         {
-            var dialog = new CommonOpenFileDialog
-            {
-                Multiselect = true,
-                Title = "Select Image Files"
-            };
-            var filterExtensions = string.Join(";", ValidImageExtensions.Select(ext => $"*{ext}"));
-            dialog.Filters.Add(new CommonFileDialogFilter("Image Files", filterExtensions));
-            dialog.Filters.Add(new CommonFileDialogFilter("All files", "*.*"));
-
-            return dialog.ShowDialog(new WindowInteropHelper(this).Handle) == CommonFileDialogResult.Ok
-                ? dialog.FileNames
-                : null;
+            return _dialogService.ShowOpenFileDialog();
         }
 
         public string? ShowFolderPickerDialog()
         {
-            var dialog = new CommonOpenFileDialog { IsFolderPicker = true, Title = "Select a folder containing images" };
-            return dialog.ShowDialog(new WindowInteropHelper(this).Handle) == CommonFileDialogResult.Ok
-                ? dialog.FileName
-                : null;
+            return _dialogService.ShowFolderPickerDialog();
         }
 
         public string? ShowSaveDialog()
         {
-            var dialog = new CommonOpenFileDialog
-            {
-                IsFolderPicker = true,
-                Title = "Select a custom output folder",
-                InitialDirectory = _viewModel.Options.CustomOutputPath
-            };
-            return dialog.ShowDialog(new WindowInteropHelper(this).Handle) == CommonFileDialogResult.Ok
-                ? dialog.FileName
-                : null;
+            return _dialogService.ShowSaveDialog();
         }
 
         public string? ShowColorPickerDialog(string initialColor)
         {
-            using var colorDialog = new System.Windows.Forms.ColorDialog { FullOpen = true };
-            try
-            {
-                var wpfColor = (Color)ColorConverter.ConvertFromString(initialColor);
-                colorDialog.Color = System.Drawing.Color.FromArgb(wpfColor.A, wpfColor.R, wpfColor.G, wpfColor.B);
-            }
-            catch { /* Ignore invalid hex */ }
-
-            if (colorDialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-            {
-                var selectedColor = colorDialog.Color;
-                return $"#{selectedColor.R:X2}{selectedColor.G:X2}{selectedColor.B:X2}";
-            }
-            return null;
+            return _dialogService.ShowColorPickerDialog(initialColor);
         }
 
         public void ShowAnalysisReport(string report, string title)
         {
-            Dispatcher.Invoke(() =>
-            {
-                var scrollViewer = new ScrollViewer
-                {
-                    Content = new System.Windows.Controls.TextBox
-                    {
-                        Text = report,
-                        IsReadOnly = true,
-                        TextWrapping = TextWrapping.NoWrap,
-                        AcceptsReturn = true,
-                        VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                        HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
-                        FontFamily = new System.Windows.Media.FontFamily("Consolas"),
-                        FontSize = 12
-                    },
-                    MaxHeight = 400,
-                    MaxWidth = 600
-                };
-                var messageBox = new Wpf.Ui.Controls.MessageBox
-                {
-                    Title = title,
-                    Content = scrollViewer,
-                    CloseButtonText = "OK"
-                };
-                _ = messageBox.ShowDialogAsync();
-            });
+            _dialogService.ShowAnalysisReport(report, title);
         }
 
         public void ShowMessageBox(string message, string title)
         {
-            Dispatcher.Invoke(() =>
-            {
-                var messageBox = new Wpf.Ui.Controls.MessageBox
-                {
-                    Title = title,
-                    Content = message,
-                    CloseButtonText = "OK"
-                };
-                _ = messageBox.ShowDialogAsync();
-            });
+            _dialogService.ShowMessageBox(message, title);
         }
 
         public void OpenInExplorer(string path)
         {
-            try
-            {
-                Process.Start("explorer.exe", path);
-            }
-            catch (Exception ex)
-            {
-                ShowMessageBox($"Could not open path: {path}\nError: {ex.Message}", "Explorer Error");
-            }
+            _dialogService.OpenInExplorer(path);
         }
     }
 }

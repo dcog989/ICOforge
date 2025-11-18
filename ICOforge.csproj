@@ -20,7 +20,6 @@
         <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
         <PackageReference Include="Svg.Skia" Version="3.2.1" />
         <PackageReference Include="WPF-UI" Version="4.0.3" />
-        <PackageReference Include="Microsoft-WindowsAPICodePack-Shell" Version="1.1.5" />
         <PackageReference Include="System.Text.Json" Version="10.0.0" />
     </ItemGroup>
 
