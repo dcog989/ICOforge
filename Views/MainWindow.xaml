@@ -27,6 +27,14 @@
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="Margin" Value="5,0,0,0" />
         </Style>
+        <Style x:Key="ColorPickerRectangleStyle" TargetType="Rectangle">
+            <Setter Property="Fill" Value="{Binding Path=Text, ElementName=SvgColorTextBox, Converter={StaticResource HexToBrushConverter}, FallbackValue=Gray}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Options.EnableSvgColorization}" Value="False">
+                    <Setter Property="Fill" Value="Gray" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
     </Window.Resources>
     <Grid>
         <Grid.RowDefinitions>
@@ -195,11 +203,11 @@
                                     <MouseBinding Command="{Binding OpenColorPickerCommand}" MouseAction="LeftClick" />
                                 </Grid.InputBindings>
                                 <Rectangle
-                                    Fill="{Binding Path=Text, ElementName=SvgColorTextBox, Converter={StaticResource HexToBrushConverter}, FallbackValue=Gray}"
                                     RadiusX="4"
                                     RadiusY="4"
                                     Stroke="Gray"
-                                    StrokeThickness="1" />
+                                    StrokeThickness="1"
+                                    Style="{StaticResource ColorPickerRectangleStyle}" />
                                 <Image
                                     Margin="2"
                                     Opacity="0.33"
