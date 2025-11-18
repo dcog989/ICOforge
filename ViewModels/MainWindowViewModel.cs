@@ -1,6 +1,5 @@
 using System.Collections.ObjectModel;
 using System.IO;
-using System.Text;
 using ICOforge.Models;
 using ICOforge.Services;
 using ICOforge.Utilities;
@@ -10,9 +9,9 @@ namespace ICOforge.ViewModels
     public class MainWindowViewModel : ViewModelBase
     {
         private readonly IconConverterService _converterService = new();
-        private readonly FaviconPackGenerator _faviconPackGenerator;
         private readonly IcoAnalyzerService _analyzerService = new();
         private readonly IDialogService _dialogService;
+        private readonly ConversionOrchestrator _orchestrator;
         private readonly HashSet<string> _fileSet = new(StringComparer.OrdinalIgnoreCase);
 
         private List<string> _selectedFiles = [];
@@ -44,10 +43,11 @@ namespace ICOforge.ViewModels
         public MainWindowViewModel(IDialogService dialogService)
         {
             _dialogService = dialogService;
-            _faviconPackGenerator = new FaviconPackGenerator(_converterService);
             var settingsService = new SettingsService();
-
             Options = new ConversionOptionsViewModel(settingsService);
+
+            var faviconPackGenerator = new FaviconPackGenerator(_converterService);
+            _orchestrator = new ConversionOrchestrator(_dialogService, _converterService, faviconPackGenerator);
 
             AddFilesCommand = new DelegateCommand(_ => OnAddFiles());
             AddFolderCommand = new DelegateCommand(_ => OnAddFolder());
@@ -219,86 +219,12 @@ namespace ICOforge.ViewModels
         private async Task HandleIcoConversion()
         {
             var filesToProcess = SelectedFiles.Any() ? new List<string>(SelectedFiles) : [.. FileList];
-            if (!TryGetOutputDirectory("ICO", filesToProcess, out string outputDir)) return;
-
-            var result = await _converterService.ConvertImagesToIcoAsync(filesToProcess, Options.GetSelectedSizes(), Options.GetSvgHexColor(), Options.GetPngOptimizationOptions(), outputDir, new Progress<IconConversionProgress>(UpdateProgress));
-            HandleIcoConversionResult(result, outputDir);
+            await _orchestrator.HandleIcoConversionAsync(Options, filesToProcess, new Progress<IconConversionProgress>(UpdateProgress));
         }
 
         private async Task HandleFaviconCreation(string inputFile)
         {
-            if (!TryGetOutputDirectory("FaviconPack", [inputFile], out string outputDir)) return;
-
-            var result = await _faviconPackGenerator.CreateAsync(inputFile, Options.GetSelectedSizes(), Options.GetSvgHexColor(), Options.GetPngOptimizationOptions(), outputDir, new Progress<IconConversionProgress>(UpdateProgress));
-
-            var messageBuilder = new StringBuilder();
-
-            if (!result.Success)
-            {
-                messageBuilder.AppendLine("Favicon pack creation failed.");
-                messageBuilder.AppendLine($"Error: {result.OptimizationError ?? "An unknown error occurred."}");
-            }
-            else
-            {
-                messageBuilder.AppendLine("Favicon pack created successfully!");
-                messageBuilder.AppendLine($"Location:\n{outputDir}");
-
-                if (result.OptimizationError != null)
-                {
-                    messageBuilder.AppendLine("\n--- Warning ---");
-                    messageBuilder.AppendLine(result.OptimizationError);
-                    messageBuilder.AppendLine("The pack was created, but PNG optimization failed.");
-                }
-            }
-
-            _dialogService.ShowMessageBox(messageBuilder.ToString(), "Favicon Pack Creation");
-
-            if (result.Success && !string.IsNullOrEmpty(outputDir))
-            {
-                _dialogService.OpenInExplorer(outputDir);
-            }
-        }
-
-        private bool TryGetOutputDirectory(string type, List<string> filesToProcess, out string outputDirectory)
-        {
-            if (Options.IsOutputToSource && !filesToProcess.Any())
-            {
-                _dialogService.ShowMessageBox("Cannot determine source directory. File list is empty.", "Output Error");
-                outputDirectory = string.Empty;
-                return false;
-            }
-
-            string? baseOutputPath = Options.IsOutputToSource ? Path.GetDirectoryName(filesToProcess.First()) : Options.CustomOutputPath;
-
-            if (string.IsNullOrEmpty(baseOutputPath))
-            {
-                _dialogService.ShowMessageBox("Could not determine the output directory.", "Output Error");
-                outputDirectory = string.Empty;
-                return false;
-            }
-
-            // Path Validation: Ensure the base path is a fully qualified absolute path.
-            // This defends against unexpected relative paths (though file dialogs usually return absolute).
-            if (!Path.IsPathFullyQualified(baseOutputPath))
-            {
-                _dialogService.ShowMessageBox($"The selected output path is invalid or not fully qualified: {baseOutputPath}", "Output Error");
-                outputDirectory = string.Empty;
-                return false;
-            }
-
-            string timestamp = DateTime.Now.ToString("yyMMdd-HHmmss");
-            outputDirectory = Path.Combine(baseOutputPath, $"ICOforge-{type}-{timestamp}");
-            try
-            {
-                Directory.CreateDirectory(outputDirectory);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                _dialogService.ShowMessageBox($"Could not create output directory:\n{outputDirectory}\n\nError: {ex.Message}\n\nPlease check your permissions or select a custom output location.", "Output Error");
-                outputDirectory = string.Empty;
-                return false;
-            }
+            await _orchestrator.HandleFaviconCreationAsync(Options, inputFile, new Progress<IconConversionProgress>(UpdateProgress));
         }
 
         private bool AreInputsValid()
@@ -320,30 +246,6 @@ namespace ICOforge.ViewModels
         {
             ConversionProgress = progress.Percentage;
             ProgressFileText = progress.CurrentFile;
-        }
-
-        private void HandleIcoConversionResult(ConversionResult result, string outputDirectory)
-        {
-            var messageBuilder = new StringBuilder();
-            messageBuilder.AppendLine("Conversion complete!");
-            messageBuilder.AppendLine($"Successful: {result.SuccessfulFiles.Count}, Failed: {result.FailedFiles.Count}.");
-
-            if (result.FailedFiles.Any())
-            {
-                messageBuilder.AppendLine("\nFailures:");
-                string failedFilesSummary = string.Join("\n", result.FailedFiles.Take(10).Select(f => $"- {f.File}: {f.Error}"));
-                messageBuilder.AppendLine(failedFilesSummary);
-                if (result.FailedFiles.Count > 10)
-                {
-                    messageBuilder.AppendLine("- ...and more.");
-                }
-            }
-            _dialogService.ShowMessageBox(messageBuilder.ToString(), "Conversion Finished");
-
-            if (result.SuccessfulFiles.Any())
-            {
-                _dialogService.OpenInExplorer(outputDirectory);
-            }
         }
     }
 }
