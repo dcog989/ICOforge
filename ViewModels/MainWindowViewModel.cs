@@ -265,6 +265,15 @@ namespace ICOforge.ViewModels
                 return false;
             }
 
+            // Path Validation: Ensure the base path is a fully qualified absolute path.
+            // This defends against unexpected relative paths (though file dialogs usually return absolute).
+            if (!Path.IsPathFullyQualified(baseOutputPath))
+            {
+                _dialogService.ShowMessageBox($"The selected output path is invalid or not fully qualified: {baseOutputPath}", "Output Error");
+                outputDirectory = string.Empty;
+                return false;
+            }
+
             string timestamp = DateTime.Now.ToString("yyMMdd-HHmmss");
             outputDirectory = Path.Combine(baseOutputPath, $"ICOforge-{type}-{timestamp}");
             try
