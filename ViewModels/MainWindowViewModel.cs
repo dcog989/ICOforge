@@ -213,16 +213,16 @@ namespace ICOforge.ViewModels
 
         private async Task HandleIcoConversion()
         {
-            if (!TryGetOutputDirectory("ICO", out string outputDir)) return;
-
             var filesToProcess = SelectedFiles.Any() ? new List<string>(SelectedFiles) : [.. FileList];
+            if (!TryGetOutputDirectory("ICO", filesToProcess, out string outputDir)) return;
+
             var result = await _converterService.ConvertImagesToIcoAsync(filesToProcess, Options.GetSelectedSizes(), Options.GetSvgHexColor(), Options.GetPngOptimizationOptions(), outputDir, new Progress<IconConversionProgress>(UpdateProgress));
             HandleIcoConversionResult(result, outputDir);
         }
 
         private async Task HandleFaviconCreation(string inputFile)
         {
-            if (!TryGetOutputDirectory("FaviconPack", out string outputDir)) return;
+            if (!TryGetOutputDirectory("FaviconPack", [inputFile], out string outputDir)) return;
 
             var result = await _faviconPackGenerator.CreateAsync(inputFile, Options.GetSelectedSizes(), Options.GetSvgHexColor(), Options.GetPngOptimizationOptions(), outputDir, new Progress<IconConversionProgress>(UpdateProgress));
 
@@ -254,9 +254,16 @@ namespace ICOforge.ViewModels
             }
         }
 
-        private bool TryGetOutputDirectory(string type, out string outputDirectory)
+        private bool TryGetOutputDirectory(string type, List<string> filesToProcess, out string outputDirectory)
         {
-            string? baseOutputPath = Options.IsOutputToSource ? Path.GetDirectoryName(FileList.First()) : Options.CustomOutputPath;
+            if (Options.IsOutputToSource && !filesToProcess.Any())
+            {
+                _dialogService.ShowMessageBox("Cannot determine source directory. File list is empty.", "Output Error");
+                outputDirectory = string.Empty;
+                return false;
+            }
+
+            string? baseOutputPath = Options.IsOutputToSource ? Path.GetDirectoryName(filesToProcess.First()) : Options.CustomOutputPath;
 
             if (string.IsNullOrEmpty(baseOutputPath))
             {
