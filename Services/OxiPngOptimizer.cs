@@ -92,7 +92,7 @@ namespace ICOforge.Services
 
             foreach (var filePath in filePaths)
             {
-                sb.Append($"\"{filePath}\" ");
+                sb.Append('"').Append(filePath).Append("\" ");
             }
 
             return sb.ToString();
