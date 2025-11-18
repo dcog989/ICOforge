@@ -1,4 +1,4 @@
-namespace ICOforge
+namespace ICOforge.Models
 {
     public enum OutputProfileType
     {

@@ -2,8 +2,9 @@ using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Text;
+using ICOforge.Models;
 
-namespace ICOforge
+namespace ICOforge.Services
 {
     public class FaviconPackGenerator(IconConverterService converterService)
     {

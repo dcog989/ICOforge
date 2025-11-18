@@ -1,7 +1,7 @@
 using System.IO;
 using System.Runtime.InteropServices;
 
-namespace ICOforge
+namespace ICOforge.Utilities
 {
     internal static class NativeMethods
     {

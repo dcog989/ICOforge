@@ -1,7 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
-namespace ICOforge
+namespace ICOforge.ViewModels
 {
     public class SizeViewModel : INotifyPropertyChanged
     {

@@ -1,7 +1,9 @@
 using System.Collections.ObjectModel;
-using ICOforge.ViewModels;
+using ICOforge.Models;
+using ICOforge.Services;
+using ICOforge.Utilities;
 
-namespace ICOforge
+namespace ICOforge.ViewModels
 {
     public class ConversionOptionsViewModel : ViewModelBase
     {

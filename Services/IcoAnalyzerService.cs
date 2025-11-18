@@ -1,6 +1,6 @@
 using System.IO;
 
-namespace ICOforge
+namespace ICOforge.Services
 {
     public class IcoAnalysisReport
     {

@@ -1,9 +1,11 @@
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Text;
-using ICOforge.ViewModels;
+using ICOforge.Models;
+using ICOforge.Services;
+using ICOforge.Utilities;
 
-namespace ICOforge
+namespace ICOforge.ViewModels
 {
     public class MainWindowViewModel : ViewModelBase
     {

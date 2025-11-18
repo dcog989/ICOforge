@@ -1,6 +1,6 @@
 using System.Windows.Input;
 
-namespace ICOforge
+namespace ICOforge.Utilities
 {
     public class DelegateCommand(Action<object?> execute, Predicate<object?>? canExecute = null) : ICommand
     {

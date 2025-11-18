@@ -5,10 +5,13 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using ICOforge.Services;
+// Removed: using ICOforge.Utilities; // Handled implicitly or via MainWindowViewModel
+using ICOforge.ViewModels;
 using Microsoft.WindowsAPICodePack.Dialogs;
 using Wpf.Ui.Controls;
 
-namespace ICOforge
+namespace ICOforge.Views
 {
     public partial class MainWindow : FluentWindow, IDialogService
     {

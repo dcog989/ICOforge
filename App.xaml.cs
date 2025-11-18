@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Media;
+using ICOforge.Views;
 using Wpf.Ui.Appearance;
 
 namespace ICOforge

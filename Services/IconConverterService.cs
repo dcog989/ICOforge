@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.IO;
+using ICOforge.Models;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Png;
 using SixLabors.ImageSharp.PixelFormats;
@@ -8,7 +9,7 @@ using SixLabors.ImageSharp.Processing.Processors.Quantization;
 using SkiaSharp;
 using Svg.Skia;
 
-namespace ICOforge
+namespace ICOforge.Services
 {
     public record PngOptimizationOptions(bool UseLossy, int MaxColors);
     public record ConversionResult(List<string> SuccessfulFiles, List<(string File, string Error)> FailedFiles);

@@ -5,7 +5,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using Wpf.Ui.Controls;
 
-namespace ICOforge
+namespace ICOforge.Views
 {
     public partial class AboutWindow : FluentWindow
     {

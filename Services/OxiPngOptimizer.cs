@@ -1,8 +1,9 @@
 using System.Diagnostics;
 using System.IO;
 using System.Text;
+using ICOforge.Models;
 
-namespace ICOforge
+namespace ICOforge.Services
 {
     public class OxiPngOptimizer
     {

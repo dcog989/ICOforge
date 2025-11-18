@@ -1,4 +1,4 @@
-namespace ICOforge
+namespace ICOforge.Services
 {
     public interface IDialogService
     {
