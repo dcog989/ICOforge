@@ -159,8 +159,7 @@ namespace ICOforge.ViewModels
         private bool CanAnalyzeIco(object? parameter)
         {
             return SelectedFiles.Count == 1 &&
-                   Path.GetExtension(SelectedFiles.FirstOrDefault() ?? string.Empty)
-                       .Equals(".ico", StringComparison.OrdinalIgnoreCase);
+            Path.GetExtension(SelectedFiles.FirstOrDefault() ?? string.Empty).Equals(".ico", StringComparison.OrdinalIgnoreCase);
         }
 
         private async Task OnAnalyzeIco()
@@ -169,11 +168,14 @@ namespace ICOforge.ViewModels
 
             try
             {
-                IcoAnalysisReport? report = await Task.Run(() => _analyzerService.Analyze(filePath));
-
-                if (report != null)
+                string? reportText = await Task.Run(() =>
                 {
-                    var reportText = FormatAnalysisReport(report);
+                    IcoAnalysisReport? report = _analyzerService.Analyze(filePath);
+                    return report != null ? FormatAnalysisReport(report) : null;
+                });
+
+                if (reportText != null)
+                {
                     _dialogService.ShowAnalysisReport(reportText, $"Analysis for {Path.GetFileName(filePath)}");
                 }
             }
