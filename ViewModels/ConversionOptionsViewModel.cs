@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.IO;
 using ICOforge.Models;
 using ICOforge.Services;
 
@@ -26,7 +27,7 @@ namespace ICOforge.ViewModels
         public bool IsIcoSizesEnabled => SelectedProfile?.Type == OutputProfileType.CustomIco || SelectedProfile?.Type == OutputProfileType.FaviconPack;
 
         public bool EnableSvgColorization { get => _enableSvgColorization; set => SetProperty(ref _enableSvgColorization, value); }
-        public string SvgColor { get => _svgColor; set => SetProperty(ref _svgColor, value); }
+        public string SvgColor { get => _svgColor; set { if (SetProperty(ref _svgColor, value)) { OnSvgColorChanged(); } } }
         public bool UseLossyCompression { get => _useLossyCompression; set => SetProperty(ref _useLossyCompression, value); }
         public List<int> ColorOptions { get; } = new() { 4, 8, 16, 32, 64, 128, 256 };
         public int SelectedColorCount { get => _selectedColorCount; set => SetProperty(ref _selectedColorCount, value); }
@@ -43,10 +44,9 @@ namespace ICOforge.ViewModels
                     var trimmedPath = value.TrimEnd(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar);
                     var folderName = System.IO.Path.GetFileName(trimmedPath);
 
-                    // Use the folder name, falling back to the full trimmed path (e.g., "C:") if the name is empty (drive root).
+                    // Use the folder name, falling back to the full trimmed path (e.g.,  "C: ") if the name is empty (drive root).
                     CustomLocationText = string.IsNullOrEmpty(folderName) ? trimmedPath : folderName;
 
-                    // Save the last output path to settings
                     _settingsService.Settings.LastOutputDirectory = trimmedPath;
                     _settingsService.SaveSettings();
                 }
@@ -56,6 +56,7 @@ namespace ICOforge.ViewModels
         public ConversionOptionsViewModel(SettingsService settingsService)
         {
             _settingsService = settingsService;
+
             var allSizes = new[] { 16, 20, 24, 32, 48, 64, 72, 96, 128, 180, 192, 256 };
             foreach (var size in allSizes)
             {
@@ -67,7 +68,16 @@ namespace ICOforge.ViewModels
             Profiles = OutputProfile.GetAvailableProfiles();
             SelectedProfile = Profiles.First(p => p.Type == OutputProfileType.StandardIco);
             SelectedColorCount = ColorOptions.Last();
+
+            SvgColor = _settingsService.Settings.LastSvgColor;
+
             CustomOutputPath = _settingsService.Settings.LastOutputDirectory;
+        }
+
+        private void OnSvgColorChanged()
+        {
+            _settingsService.Settings.LastSvgColor = SvgColor;
+            _settingsService.SaveSettings();
         }
 
         private void OnIcoSizeViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
