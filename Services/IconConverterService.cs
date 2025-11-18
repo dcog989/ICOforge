@@ -108,9 +108,21 @@ namespace ICOforge.Services
             using var canvas = new SKCanvas(bitmap);
 
             canvas.Clear(SKColors.Transparent);
-            var scaleMatrix = SKMatrix.CreateScale(size / svg.Picture.CullRect.Width, size / svg.Picture.CullRect.Height);
+
+            // Calculate uniform scaling to fit the SVG picture within the target square size.
+            var svgRect = svg.Picture.CullRect;
+            float scaleX = size / svgRect.Width;
+            float scaleY = size / svgRect.Height;
+            float scale = Math.Min(scaleX, scaleY);
+
+            // Center the scaled image in the target square.
+            float translateX = (size - svgRect.Width * scale) / 2;
+            float translateY = (size - svgRect.Height * scale) / 2;
+
+            canvas.Translate(translateX, translateY);
+            canvas.Scale(scale);
+
             canvas.Save();
-            canvas.Concat(ref scaleMatrix);
 
             if (!string.IsNullOrWhiteSpace(svgHexColor) && SKColor.TryParse(svgHexColor, out var skColor))
             {
