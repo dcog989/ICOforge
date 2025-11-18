@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.IO;
 using ICOforge.Models;
 using ICOforge.Services;
 
