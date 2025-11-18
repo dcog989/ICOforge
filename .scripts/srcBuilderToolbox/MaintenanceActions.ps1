@@ -4,52 +4,103 @@ function Remove-BuildOutput {
     param([switch]$NoConfirm)
 
     if (-not $NoConfirm) {
-        if (-not (Confirm-Ideshutdown -Action "Clean Solution")) { return }
+        if (-not (Confirm-IdeShutdown -Action "Clean Solution")) { return }
         if (-not (Confirm-ProcessTermination -Action "Clean")) { return }
     }
 
     Write-Log "Cleaning build files..." "CONSOLE"
 
-    # Optimized search: Find all project files, then look for bin/obj in their parent directories.
-    # This avoids a deep recursive search across the entire repository.
-    $projectFiles = Get-ChildItem -Path $Script:SolutionRoot -Filter "*.csproj" -Recurse -File -ErrorAction SilentlyContinue
-    $projectParentDirs = $projectFiles | Select-Object -ExpandProperty DirectoryName | Get-Unique
+    # Method 1: Use dotnet clean for proper .NET cleanup
+    Write-Log "Running 'dotnet clean'..." 
+    $cleanResult = Invoke-DotnetCommand -Command "clean" -Arguments "`"$Script:SolutionFile`" -c Release -v minimal" -IgnoreErrors
+    if ($cleanResult.Success) {
+        Write-Log "Dotnet clean completed" "SUCCESS"
+    }
+
+    # Method 2: Manual cleanup for comprehensive removal
+    $searchPaths = @($Script:SolutionRoot)
+    
+    # Also include repo root if different from solution root
+    if ($Script:RepoRoot -ne $Script:SolutionRoot) {
+        $searchPaths += $Script:RepoRoot
+    }
 
     $buildDirs = @()
-    if ($projectParentDirs.Count -gt 0) {
-        Write-Log "Found $($projectParentDirs.Count) project directories. Searching for 'bin' and 'obj' folders within them."
-        $buildDirs = Get-ChildItem -Path $projectParentDirs -Include "bin", "obj" -Directory -ErrorAction SilentlyContinue
+    foreach ($searchPath in $searchPaths) {
+        Write-Log "Searching for build directories in: $searchPath"
+        $foundDirs = Get-ChildItem -Path $searchPath -Include "bin", "obj" -Directory -Recurse -ErrorAction SilentlyContinue
+        $buildDirs += $foundDirs
+    }
+
+    # Remove duplicates and exclude any paths that might be in use
+    $buildDirs = $buildDirs | Sort-Object -Property FullName -Unique | Where-Object {
+        try {
+            # Test if directory can be accessed (not locked)
+            Get-ChildItem $_.FullName -ErrorAction Stop | Out-Null
+            $true
+        }
+        catch {
+            Write-Log "Skipping locked directory: $($_.FullName)" "WARN"
+            $false
+        }
     }
 
     if ($buildDirs.Count -gt 0) {
+        Write-Log "Found $($buildDirs.Count) build directories to remove"
         $counter = 0
         $total = $buildDirs.Count
+        
         foreach ($dir in $buildDirs) {
             $counter++
-            Write-Progress -Activity "Cleaning build directories" -Status "Removing $($dir.Name)" -PercentComplete (($counter / $total) * 100)
-            Remove-Item -Path $dir.FullName -Recurse -Force -ErrorAction SilentlyContinue
+            $percentComplete = ($counter / $total) * 100
+            Write-Progress -Activity "Cleaning build directories" -Status "Removing $($dir.Name)" -PercentComplete $percentComplete -CurrentOperation $dir.FullName
+            
+            try {
+                Remove-Item -Path $dir.FullName -Recurse -Force -ErrorAction Stop
+                Write-Log "Removed: $($dir.FullName)" "DEBUG"
+            }
+            catch {
+                Write-Log "Failed to remove: $($dir.FullName) - $($_.Exception.Message)" "WARN"
+            }
         }
-        # Ensure progress bar is completed AND cleared from display
+        
         Write-Progress -Activity "Cleaning build directories" -Completed
-        # Small delay to let PowerShell process the completion
-        Start-Sleep -Milliseconds 50
-        Write-Log "Removed $($buildDirs.Count) build directories"
+        Start-Sleep -Milliseconds 100  # Ensure progress bar clears
+        Write-Log "Removed $($buildDirs.Count) build directories" "SUCCESS"
     }
     else {
         Write-Log "No 'bin' or 'obj' directories found to clean."
     }
 
+    # Cleanup Velopack releases if enabled
     if ($Script:UseVelopack) {
         $releaseDir = Join-Path $Script:SolutionRoot "Releases"
         if (Test-Path $releaseDir) {
-            Write-Log "Removing Velopack releases directory..."
-            Remove-Item -Path $releaseDir -Recurse -Force -ErrorAction SilentlyContinue
-            Write-Log "Removed Velopack releases directory."
+            Write-Log "Removing Velopack releases directory..." 
+            try {
+                Remove-Item -Path $releaseDir -Recurse -Force -ErrorAction Stop
+                Write-Log "Removed Velopack releases directory." "SUCCESS"
+            }
+            catch {
+                Write-Log "Failed to remove Velopack releases: $($_.Exception.Message)" "WARN"
+            }
+        }
+    }
+
+    # Cleanup any packages directories
+    $packageDirs = Get-ChildItem -Path $Script:SolutionRoot -Include "packages", "package", "publish" -Directory -Recurse -ErrorAction SilentlyContinue
+    foreach ($pkgDir in $packageDirs) {
+        try {
+            Remove-Item -Path $pkgDir.FullName -Recurse -Force -ErrorAction Stop
+            Write-Log "Removed package directory: $($pkgDir.FullName)" "DEBUG"
+        }
+        catch {
+            Write-Log "Failed to remove package directory: $($pkgDir.FullName)" "WARN"
         }
     }
 
     Clear-BuildVersionCache
-    Write-Log "Cleanup successful." "SUCCESS"
+    Write-Log "Cleanup completed." "SUCCESS"
 }
 
 function Update-VersionNumber {
