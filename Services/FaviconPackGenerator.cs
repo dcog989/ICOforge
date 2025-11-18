@@ -12,19 +12,24 @@ namespace ICOforge.Services
     {
         private readonly OxiPngOptimizer _optimizer = new();
 
+        private static readonly int[] PngSizes = [128, 180, 256, 512];
+        private const string AppleTouchIconName = "apple-touch-icon.png";
+        private const int AppleTouchIconSize = 180;
+        private const string FaviconIcoName = "favicon.ico";
+        private const string FaviconSvgName = "favicon.svg";
+
         public async Task<FaviconPackResult> CreateAsync(string filePath, List<int> icoSizes, string svgHexColor, PngOptimizationOptions optimizationOptions, string outputDirectory, IProgress<IconConversionProgress> progress)
         {
             progress.Report(new IconConversionProgress { Percentage = 10, CurrentFile = "Creating directories..." });
             string iconsDir = Path.Combine(outputDirectory, "icons");
             Directory.CreateDirectory(iconsDir);
 
-            int[] sizesToGenerate = [128, 180, 256, 512];
             var pngTasks = new List<Task<string>>();
 
             progress.Report(new IconConversionProgress { Percentage = 20, CurrentFile = "Generating PNGs..." });
-            foreach (var size in sizesToGenerate)
+            foreach (var size in PngSizes)
             {
-                string filename = size == 180 ? "apple-touch-icon.png" : $"favicon-x{size}.png";
+                string filename = size == AppleTouchIconSize ? AppleTouchIconName : $"favicon-x{size}.png";
                 string outputPath = Path.Combine(iconsDir, filename);
                 pngTasks.Add(CreateAndSavePngAsync(filePath, size, svgHexColor, outputPath, optimizationOptions));
             }
@@ -36,7 +41,7 @@ namespace ICOforge.Services
             progress.Report(new IconConversionProgress { Percentage = 70, CurrentFile = "Generating ICO..." });
             string sourceIcoFileName = $"{Path.GetFileNameWithoutExtension(filePath)}.ico";
             string initialIcoPath = Path.Combine(outputDirectory, sourceIcoFileName);
-            string finalIcoPath = Path.Combine(outputDirectory, "favicon.ico");
+            string finalIcoPath = Path.Combine(outputDirectory, FaviconIcoName);
             var icoConversionResult = await converterService.ConvertImagesToIcoAsync([filePath], icoSizes, svgHexColor, optimizationOptions, outputDirectory, new Progress<IconConversionProgress>());
 
             if (icoConversionResult.FailedFiles.Any())
@@ -54,7 +59,7 @@ namespace ICOforge.Services
             progress.Report(new IconConversionProgress { Percentage = 80, CurrentFile = "Copying SVG..." });
             if (Path.GetExtension(filePath).Equals(".svg", StringComparison.OrdinalIgnoreCase))
             {
-                File.Copy(filePath, Path.Combine(iconsDir, "favicon.svg"), true);
+                File.Copy(filePath, Path.Combine(iconsDir, FaviconSvgName), true);
             }
 
             progress.Report(new IconConversionProgress { Percentage = 90, CurrentFile = "Generating HTML..." });
