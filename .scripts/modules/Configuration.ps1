@@ -1,0 +1,329 @@
+# Builder Toolbox - Configuration & Paths
+
+# -----------------------------------------------------------------------------
+# 1. Path Discovery & Context
+# -----------------------------------------------------------------------------
+$Script:PSScriptRoot = (Split-Path -Parent $PSCommandPath)
+
+# Calculate RepoRoot based on standard structure: repo/.scripts/modules/Config.ps1
+try {
+    $scriptDirItem = Get-Item $PSScriptRoot -ErrorAction Stop
+    # .scripts/modules -> .scripts -> repo_root
+    $Script:RepoRoot = $scriptDirItem.Parent.Parent.FullName
+}
+catch {
+    $Script:RepoRoot = $PSScriptRoot
+}
+
+# -----------------------------------------------------------------------------
+# 2. Configuration Loading
+# -----------------------------------------------------------------------------
+
+# Default values (Fallbacks)
+$config = @{
+    PackageTitle          = "Cliptoo"
+    MainProjectName       = "Cliptoo.UI"
+    SolutionFileName      = "Cliptoo.sln"
+    SolutionSubFolder     = ""
+    MainProjectSourcePath = "Cliptoo.UI"
+    PackageAuthors        = "dcog989"
+    RequiredDotNetVersion = "10"
+    TargetFramework       = "net10.0-windows"
+    BuildPlatform         = "x64"
+    PublishRuntimeId      = "win-x64"
+    UseVelopack           = $true
+    VelopackChannelName   = "prod"
+    RemoveCreateDump      = $true
+    RemoveXmlFiles        = $true
+}
+
+# Define search paths for toolbox.json
+$searchPaths = @(
+    (Join-Path $Script:RepoRoot "toolbox.json"),                            # Repo Root (D:\Code\ICOforge\toolbox.json)
+    (Join-Path (Split-Path $PSScriptRoot -Parent) "toolbox.json"),          # .scripts folder
+    (Join-Path $PSScriptRoot "toolbox.json")                                # modules folder
+)
+
+# Diagnostic Output to debug path issues
+Write-Host "----------------------------------------------------------------" -ForegroundColor DarkGray
+Write-Host "Configuration Diagnostics" -ForegroundColor Cyan
+Write-Host "Repo Root:     $($Script:RepoRoot)" -ForegroundColor Gray
+Write-Host "Searching for: toolbox.json" -ForegroundColor Gray
+
+$configFile = $searchPaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+if ($configFile) {
+    Write-Host "FOUND:         $configFile" -ForegroundColor Green
+    try {
+        $jsonSettings = Get-Content $configFile -Raw | ConvertFrom-Json
+        
+        $keys = @($config.Keys)
+
+        foreach ($key in $keys) {
+            if ($jsonSettings.PSObject.Properties[$key]) {
+                $config[$key] = $jsonSettings.$key
+            }
+        }
+        Write-Host "Status:        Settings loaded successfully." -ForegroundColor Gray
+    }
+    catch {
+        Write-Host "ERROR:         Failed to parse JSON: $_" -ForegroundColor Red
+    }
+}
+else {
+    Write-Host "MISSING:       toolbox.json not found in any search path." -ForegroundColor Yellow
+    Write-Host "FALLBACK:      Using default 'Cliptoo' configuration." -ForegroundColor Yellow
+}
+
+# Checks for environment variables with prefix 'BUILDER_' (e.g., BUILDER_PACKAGETITLE, BUILDER_USEVELOPACK)
+# This allows pipeline workflows to override settings without modifying files.
+$envPrefix = "BUILDER_"
+foreach ($key in @($config.Keys)) {
+    $envVarName = "$envPrefix$($key.ToUpper())"
+    if (Test-Path "env:$envVarName") {
+        $envValue = (Get-Item "env:$envVarName").Value
+        
+        # Simple type conversion based on existing value
+        if ($config[$key] -is [bool]) {
+            $config[$key] = [System.Convert]::ToBoolean($envValue)
+        }
+        else {
+            $config[$key] = $envValue
+        }
+        
+        Write-Host "OVERRIDE:      $key set from environment variable $envVarName" -ForegroundColor Cyan
+    }
+}
+
+Write-Host "----------------------------------------------------------------" -ForegroundColor DarkGray
+
+# Apply settings to Script Scope
+$Script:PackageTitle = $config.PackageTitle
+$Script:MainProjectName = $config.MainProjectName
+$Script:SolutionFileName = $config.SolutionFileName
+$Script:SolutionSubFolder = $config.SolutionSubFolder
+$Script:MainProjectSourcePath = $config.MainProjectSourcePath
+$Script:PackageAuthors = $config.PackageAuthors
+$Script:RequiredDotNetVersion = $config.RequiredDotNetVersion
+$Script:TargetFramework = $config.TargetFramework
+$Script:BuildPlatform = $config.BuildPlatform
+$Script:PublishRuntimeId = $config.PublishRuntimeId
+$Script:UseVelopack = [bool]$config.UseVelopack
+$Script:VelopackChannelName = $config.VelopackChannelName
+$Script:RemoveCreateDump = [bool]$config.RemoveCreateDump
+$Script:RemoveXmlFiles = [bool]$config.RemoveXmlFiles
+
+# -----------------------------------------------------------------------------
+# ! Derived Settings - Do not edit below this line.
+# -----------------------------------------------------------------------------
+
+$Script:SolutionRoot = if (-not [string]::IsNullOrEmpty($Script:SolutionSubFolder)) { Join-Path $Script:RepoRoot $Script:SolutionSubFolder } else { $Script:RepoRoot }
+$Script:SolutionFile = Join-Path $Script:SolutionRoot $Script:SolutionFileName
+
+$Script:MainProjectDir = Join-Path $Script:SolutionRoot $Script:MainProjectSourcePath
+$Script:MainProjectFile = Join-Path $Script:MainProjectDir "$($Script:MainProjectName).csproj"
+
+# Velopack settings
+$Script:PackageId = $Script:PackageTitle
+$Script:PackageIconPath = Join-Path $Script:MainProjectDir "Assets/Icons/$($Script:PackageTitle.ToLower()).ico"
+$Script:MainExeName = "$($Script:MainProjectName).exe"
+$Script:AppDataFolderName = $Script:PackageTitle
+
+# Package naming and markers
+$Script:PortableMarkerFile = "$($Script:PackageTitle.ToLower()).portable"
+$Script:StandardArchiveFormat = "{0}-Windows-x64-v{1}.7z"           # Param 0: PackageTitle, Param 1: Version
+$Script:PortableArchiveFormat = "{0}-Windows-x64-Portable-v{1}.7z"  # Param 0: PackageTitle, Param 1: Version
+$Script:LogFileFormat = "{0}.build.{1}.log"                         # Param 0: PackageTitle, Param 1: Timestamp
+
+# 7-Zip
+$Script:SevenZipPath = $null
+
+# Cached values
+$Script:BuildVersion = $null
+$Script:AppNameCache = $null
+$Script:LogFile = $null
+$Script:LogBuffer = [System.Collections.Generic.List[string]]::new()
+$Script:LogBufferFlushThreshold = 50
+$Script:SdkVersion = "N/A"
+$Script:AppName = $null                     # Effective App Name
+$Script:ProcessNameForTermination = $null   # Process Name for termination checks
+
+# Menu item definitions for layout and logging
+$Script:MenuItems = [ordered]@{
+    "1" = @{ Description = "Build & Run (Debug)"; Command = "Start-BuildAndRun"; Args = @{ Configuration = "Debug" }; Response = "WaitForEnter" }
+    "2" = @{ Description = "Build & Run (Release)"; Command = "Start-BuildAndRun"; Args = @{ Configuration = "Release" }; Response = "WaitForEnter" }
+    "3" = @{ Description = "Watch & Run (Hot Reload)"; Command = "Watch-And-Run"; Args = @{}; Response = "WaitForEnter" }
+    "4" = @{ Description = "Restore NuGet Packages"; Command = "Restore-NuGetPackages"; Args = @{}; Response = "WaitForEnter" }
+    "5" = @{ Description = "List Packages + Updates"; Command = "Show-OutdatedPackages"; Args = @{}; Response = "WaitForEnter" }
+    "6" = @{ Description = "Run Unit Tests"; Command = "Invoke-UnitTests"; Args = @{}; Response = "WaitForEnter" }
+    "7" = @{ Description = "Produce Changelog"; Command = "New-ChangelogFromGit"; Args = @{}; Response = "WaitForEnter" }
+    "8" = @{ Description = "Publish Portable Package"; Command = "Publish-Portable"; Args = @{}; Response = "WaitForEnter" }
+    "9" = @{ Description = "Publish Production Package"; Command = "New-ProductionPackage"; Args = @{}; Response = "WaitForEnter" }
+
+    "A" = @{ Description = "Change Version Number"; Command = "Update-VersionNumber"; Args = @{}; Response = "WaitForEnter" }
+    "B" = @{ Description = "Open Solution in IDE"; Command = "Open-SolutionInIDE"; Args = @{}; Response = "PauseBriefly" }
+    "C" = @{ Description = "Clean Solution"; Command = "Remove-BuildOutput"; Args = @{}; Response = "PauseBriefly" }
+    "D" = @{ Description = "Clean Logs"; Command = "Clear-Logs"; Args = @{}; Response = "PauseBriefly" }
+    "E" = @{ Description = "Open Output Folder"; Command = "Open-OutputFolder"; Args = @{}; Response = "PauseBriefly" }
+    "F" = @{ Description = "Open User Data Folder"; Command = "Open-UserDataFolder"; Args = @{}; Response = "PauseBriefly" }
+    "G" = @{ Description = "Open Log File"; Command = "Open-LatestLogFile"; Args = @{}; Response = "PauseBriefly" }
+}
+
+function Test-PrerequisiteTools {
+    $tools = @{}
+
+    # Test .NET SDK
+    try {
+        $dotnetVersion = & dotnet --version 2>$null
+        if ($LASTEXITCODE -eq 0) {
+            $tools['dotnet'] = @{
+                Found      = $true
+                Version    = $dotnetVersion
+                Required   = $Script:RequiredDotNetVersion
+                Compatible = $dotnetVersion.StartsWith($Script:RequiredDotNetVersion)
+            }
+        }
+        else {
+            $tools['dotnet'] = @{ Found = $false; Version = "N/A"; Required = $Script:RequiredDotNetVersion; Compatible = $false }
+        }
+    }
+    catch {
+        $tools['dotnet'] = @{ Found = $false; Version = "N/A"; Required = $Script:RequiredDotNetVersion; Compatible = $false }
+    }
+
+    # Test Git
+    try {
+        $gitVersion = & git --version 2>$null
+        if ($LASTEXITCODE -eq 0) {
+            $tools['git'] = @{ Found = $true; Version = $gitVersion; Required = "Any"; Compatible = $true }
+        }
+        else {
+            $tools['git'] = @{ Found = $false; Version = "N/A"; Required = "Any"; Compatible = $false }
+        }
+    }
+    catch {
+        $tools['git'] = @{ Found = $false; Version = "N/A"; Required = "Any"; Compatible = $false }
+    }
+
+    # Test 7-Zip if not using Velopack
+    if (-not $Script:UseVelopack) {
+        $sevenZip = Find-7ZipExecutable
+        $tools['7zip'] = @{
+            Found      = (-not [string]::IsNullOrEmpty($sevenZip))
+            Version    = if ($sevenZip) { "Found" } else { "N/A" }
+            Required   = "Required for non-Velopack builds"
+            Compatible = (-not [string]::IsNullOrEmpty($sevenZip))
+        }
+    }
+
+    return $tools
+}
+
+function Test-ConfigurationValidity {
+    $requiredSettings = @{
+        'PackageTitle'          = [string]
+        'MainProjectName'       = [string]
+        'SolutionFileName'      = [string]
+        'TargetFramework'       = [string]
+        'PublishRuntimeId'      = [string]
+        'RequiredDotNetVersion' = [string]
+    }
+
+    $errors = @()
+    $warnings = @()
+
+    # Validate required settings
+    foreach ($setting in $requiredSettings.Keys) {
+        $value = (Get-Variable -Name $setting -Scope Script -ErrorAction SilentlyContinue).Value
+
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            $errors += "Required configuration '$setting' is not set or is empty."
+        }
+    }
+
+    # Validate file paths with comprehensive checks
+    $solutionPath = $Script:SolutionFile
+    if (Test-Path $solutionPath) {
+        $solutionInfo = Get-Item $solutionPath
+        if ($solutionInfo.Extension -ne ".sln") {
+            $warnings += "Solution file '$solutionPath' does not have .sln extension."
+        }
+        Write-Log "Solution file found: $($Script:SolutionFile)" "DEBUG"
+    }
+    else {
+        $errors += "Solution file path resolves to non-existent location: $solutionPath"
+    }
+
+    # Validate main project path
+    $mainProjectPath = $Script:MainProjectFile
+    if (Test-Path $mainProjectPath) {
+        $projectInfo = Get-Item $mainProjectPath
+        if ($projectInfo.Extension -ne ".csproj") {
+            $warnings += "Main project file '$mainProjectPath' does not have .csproj extension."
+        }
+        Write-Log "Main project file found: $($Script:MainProjectFile)" "DEBUG"
+    }
+    else {
+        $errors += "Main project file path resolves to non-existent location: $mainProjectPath"
+    }
+
+    # Validate solution root directory
+    if (-not (Test-Path $Script:SolutionRoot)) {
+        $errors += "Solution root directory does not exist: $($Script:SolutionRoot)"
+    }
+
+    # Validate main project directory
+    if (-not (Test-Path $Script:MainProjectDir)) {
+        $errors += "Main project directory does not exist: $($Script:MainProjectDir)"
+    }
+
+    # Validate target framework format
+    if ($Script:TargetFramework -notmatch '^net\d+\.\d+(-[\w-]+)?$') {
+        $warnings += "Target framework '$($Script:TargetFramework)' may have invalid format."
+    }
+
+    # Validate publish runtime identifier
+    # Regex allows: win-x64, win-x64-desktop, linux-arm64, etc.
+    if ($Script:PublishRuntimeId -notmatch '^[\w-]+-[\w-]+(-[\w-]+)?$') {
+        $warnings += "Publish runtime identifier '$($Script:PublishRuntimeId)' may have invalid format."
+    }
+
+    # Test prerequisite tools
+    $tools = Test-PrerequisiteTools
+    foreach ($tool in $tools.GetEnumerator()) {
+        $toolInfo = $tool.Value
+        if (-not $toolInfo.Found) {
+            $errors += "Required tool '$($tool.Key)' not found. $($toolInfo.Required)"
+        }
+        elseif (-not $toolInfo.Compatible) {
+            $errors += "Tool '$($tool.Key)' version $($toolInfo.Version) is not compatible. Required: $($toolInfo.Required)"
+        }
+        else {
+            Write-Log "Tool '$($tool.Key)' found: $($toolInfo.Version)" "DEBUG"
+        }
+    }
+
+    # Report validation results
+    if ($errors.Count -gt 0) {
+        Write-Host "Configuration validation failed with $($errors.Count) error(s):" -ForegroundColor Red
+        $errors | ForEach-Object { Write-Host "  ✗ $_" -ForegroundColor Red }
+
+        if ($warnings.Count -gt 0) {
+            Write-Host "`nAdditional warnings:" -ForegroundColor Yellow
+            $warnings | ForEach-Object { Write-Host "  ⚠ $_" -ForegroundColor Yellow }
+        }
+
+        Write-Host "`nPlease fix these issues before proceeding." -ForegroundColor Red
+        return $false
+    }
+
+    if ($warnings.Count -gt 0) {
+        Write-Host "Configuration validation passed with $($warnings.Count) warning(s):" -ForegroundColor Yellow
+        $warnings | ForEach-Object { Write-Host "  ⚠ $_" -ForegroundColor Yellow }
+    }
+    else {
+        Write-Log "Configuration validation passed successfully" "DEBUG"
+    }
+
+    return $true
+}

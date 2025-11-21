@@ -15,14 +15,14 @@ function Get-OutdatedPackages {
     $process = $null
     try {
         $logFile = Get-LogFile
-        $arguments = "list `"$($Script:SolutionFile)`" package --outdated"
+        # Bug 2 Fix: Use JSON format for robust parsing instead of text scraping
+        $arguments = "list `"$($Script:SolutionFile)`" package --outdated --format json"
 
         Write-Log "Executing: dotnet $arguments"
 
-        # Use synchronous process execution to avoid race conditions with log file writing.
         $processInfo = New-Object System.Diagnostics.ProcessStartInfo
         $processInfo.FileName = "dotnet"
-        $processInfo.Arguments = "$arguments --verbosity normal"
+        $processInfo.Arguments = "$arguments" # Verbosity not needed for JSON
         $processInfo.RedirectStandardOutput = $true
         $processInfo.RedirectStandardError = $true
         $processInfo.UseShellExecute = $false
@@ -33,41 +33,45 @@ function Get-OutdatedPackages {
         $stdError = $process.StandardError.ReadToEnd()
         $process.WaitForExit()
 
-        if (-not [string]::IsNullOrWhiteSpace($output)) {
-            Add-Content -Path $logFile -Value $output
-        }
         if (-not [string]::IsNullOrWhiteSpace($stdError)) {
             Add-Content -Path $logFile -Value "ERROR: $($stdError)"
-        }
-
-        # Display a filtered summary to the user for immediate feedback
-        if (-not [string]::IsNullOrWhiteSpace($output)) {
-            $outputLines = $output.Split([Environment]::NewLine)
-            $startIndex = -1
-            for ($i = 0; $i -lt $outputLines.Length; $i++) {
-                if ($outputLines[$i] -match 'has (no updates|the following updates)') {
-                    $startIndex = $i
-                    break
-                }
-            }
-
-            if ($startIndex -ge 0) {
-                $summary = $outputLines[$startIndex..($outputLines.Length - 1)] -join [Environment]::NewLine
-                Write-Host $summary.Trim()
-            }
-            else {
-                Write-Log "Could not find package update summary in the output. See log for details." "WARN"
-            }
-        }
-        if (-not [string]::IsNullOrWhiteSpace($stdError)) {
             Write-Host $stdError -ForegroundColor Red
         }
 
-        if ($process.ExitCode -eq 0) {
-            Write-Log "Package check successful." "SUCCESS"
+        if ($process.ExitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($output)) {
+            try {
+                $json = $output | ConvertFrom-Json
+                $updatesFound = $false
+                $summary = [System.Text.StringBuilder]::new()
+
+                if ($json.projects) {
+                    foreach ($project in $json.projects) {
+                        foreach ($framework in $project.frameworks) {
+                            foreach ($pkg in $framework.topLevelPackages) {
+                                $updatesFound = $true
+                                $line = "Project: $(Split-Path $project.path -Leaf) | Package: $($pkg.id) | Current: $($pkg.resolvedVersion) -> Latest: $($pkg.latestVersion)"
+                                [void]$summary.AppendLine($line)
+                            }
+                        }
+                    }
+                }
+
+                if ($updatesFound) {
+                    $msg = "Updates available:`n" + $summary.ToString()
+                    Write-Host $msg -ForegroundColor Yellow
+                    Add-Content -Path $logFile -Value $msg
+                }
+                else {
+                    Write-Log "No outdated packages found." "SUCCESS"
+                }
+            }
+            catch {
+                Write-Log "Failed to parse package JSON output: $_" "ERROR"
+                Add-Content -Path $logFile -Value "Raw Output: $output"
+            }
         }
         else {
-            Write-Log "Package check failed. Exit code: $($process.ExitCode)" "ERROR"
+            Write-Log "Package check failed or returned no output. Exit code: $($process.ExitCode)" "ERROR"
         }
     }
     catch {
@@ -94,4 +98,9 @@ function Restore-NuGetPackages {
     else {
         Write-Log "NuGet packages restore failed: $($result.Message)" "ERROR"
     }
+}
+
+function Show-OutdatedPackages {
+    Get-OutdatedPackages
+    Invoke-ItemSafely -Path (Get-LogFile) -ItemType "Log file"
 }

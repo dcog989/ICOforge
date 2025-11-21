@@ -1,0 +1,16 @@
+{
+    "PackageTitle": "ICOforge",
+    "MainProjectName": "ICOforge",
+    "SolutionFileName": "ICOforge.sln",
+    "SolutionSubFolder": "",
+    "MainProjectSourcePath": "",
+    "PackageAuthors": "Developer",
+    "RequiredDotNetVersion": "10",
+    "TargetFramework": "net10.0-windows",
+    "BuildPlatform": "x64",
+    "PublishRuntimeId": "win-x64",
+    "UseVelopack": false,
+    "VelopackChannelName": "prod",
+    "RemoveCreateDump": true,
+    "RemoveXmlFiles": true
+}

@@ -1,5 +1,7 @@
 # Builder Toolbox - Git and Tool Helpers
 
+$Script:GitInfoCache = $null
+
 function Find-7ZipExecutable {
     # 1. Check PATH
     $sevenZipInPath = Get-Command 7za.exe -ErrorAction SilentlyContinue
@@ -28,14 +30,19 @@ function Find-7ZipExecutable {
 }
 
 function Get-GitInfo {
-    # No caching in this file, caching is done in Main for a single run
+    # Performance Fix: Cache Git info to prevent process creation on every menu refresh (Performance 4)
+    if ($null -ne $Script:GitInfoCache) {
+        return $Script:GitInfoCache
+    }
+
     $gitInfo = @{ Branch = "N/A"; Commit = "N/A" }
 
     if (Get-Command git -ErrorAction SilentlyContinue) {
         # First, check if the solution root is a git repository before running other commands.
         git -C $Script:SolutionRoot rev-parse --is-inside-work-tree 2>$null | Out-Null
         if ($LASTEXITCODE -ne 0) {
-            return $gitInfo # Not a git repo, so return default info silently.
+            $Script:GitInfoCache = $gitInfo
+            return $gitInfo
         }
 
         try {
@@ -56,8 +63,8 @@ function Get-GitInfo {
             Write-Log "Failed to get Git info: $_" "WARN"
         }
     }
-    # If git is not found, we will just return the default values.
 
+    $Script:GitInfoCache = $gitInfo
     return $gitInfo
 }
 
@@ -215,13 +222,17 @@ function Remove-CreateDumpReference {
 
             # The createdump.exe reference is typically found within the native assets of a runtime package.
             # This logic navigates the complex structure to find and remove it safely.
-            if ($depjson.targets) {
+            if ($depjson.PSObject.Properties['targets']) {
                 foreach ($targetProperty in $depjson.targets.PSObject.Properties) {
                     $libraries = $targetProperty.Value
                     foreach ($libraryProperty in $libraries.PSObject.Properties) {
                         $library = $libraryProperty.Value
-                        if ($library.PSObject.Properties['native']) {
+
+                        # Safely check for 'native' property existence
+                        if ($library.PSObject.Properties['native'] -and $library.native) {
                             $nativeAssets = $library.native
+
+                            # Check if native assets contain createdump.exe
                             if ($nativeAssets.PSObject.Properties['createdump.exe']) {
                                 $nativeAssets.PSObject.Properties.Remove('createdump.exe')
                                 Write-Log "Removed 'createdump.exe' from native assets under '$($libraryProperty.Name)'"
