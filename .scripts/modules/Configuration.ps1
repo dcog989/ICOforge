@@ -19,83 +19,158 @@ catch {
 # 2. Configuration Loading
 # -----------------------------------------------------------------------------
 
-# Default values (Fallbacks)
+# Default values (Generic / Portable)
+# Project-specific values are initialized to null to trigger auto-discovery
 $config = @{
-    PackageTitle          = "Cliptoo"
-    MainProjectName       = "Cliptoo.UI"
-    SolutionFileName      = "Cliptoo.sln"
+    PackageTitle          = $null
+    MainProjectName       = $null
+    SolutionFileName      = $null
     SolutionSubFolder     = ""
-    MainProjectSourcePath = "Cliptoo.UI"
-    PackageAuthors        = "dcog989"
-    RequiredDotNetVersion = "10"
-    TargetFramework       = "net10.0-windows"
+    MainProjectSourcePath = $null
+    PackageAuthors        = "Developer"
+    RequiredDotNetVersion = "8.0"        # Safe LTS default
+    TargetFramework       = "net8.0-windows"
     BuildPlatform         = "x64"
     PublishRuntimeId      = "win-x64"
-    UseVelopack           = $true
+    UseVelopack           = $false       # Default to false for better portability
     VelopackChannelName   = "prod"
     RemoveCreateDump      = $true
     RemoveXmlFiles        = $true
+    XmlKeepPatterns       = @()
+    IdeProcessNames       = @{
+        "devenv"  = "Visual Studio"
+        "Code"    = "Visual Studio Code"
+        "rider64" = "JetBrains Rider"
+    }
 }
 
 # Define search paths for toolbox.json
 $searchPaths = @(
-    (Join-Path $Script:RepoRoot "toolbox.json"),                            # Repo Root (D:\Code\ICOforge\toolbox.json)
+    (Join-Path $Script:RepoRoot "toolbox.json"),                            # Repo Root
     (Join-Path (Split-Path $PSScriptRoot -Parent) "toolbox.json"),          # .scripts folder
     (Join-Path $PSScriptRoot "toolbox.json")                                # modules folder
 )
 
-# Diagnostic Output to debug path issues
-Write-Host "----------------------------------------------------------------" -ForegroundColor DarkGray
-Write-Host "Configuration Diagnostics" -ForegroundColor Cyan
-Write-Host "Repo Root:     $($Script:RepoRoot)" -ForegroundColor Gray
-Write-Host "Searching for: toolbox.json" -ForegroundColor Gray
+# Diagnostic Output
+# (Excessive logging silenced for cleaner startup)
+# Write-Host "----------------------------------------------------------------" -ForegroundColor DarkGray
+# Write-Host "Configuration Diagnostics" -ForegroundColor Cyan
+# Write-Host "Repo Root:     $($Script:RepoRoot)" -ForegroundColor Gray
+# Write-Host "Searching for: toolbox.json" -ForegroundColor Gray
 
-$configFile = $searchPaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+$configFile = $null
+foreach ($path in $searchPaths) {
+    if (Test-Path $path) {
+        $configFile = $path
+        break
+    }
+}
 
 if ($configFile) {
-    Write-Host "FOUND:         $configFile" -ForegroundColor Green
+    # Write-Host "FOUND:         $configFile" -ForegroundColor Green
     try {
         $jsonSettings = Get-Content $configFile -Raw | ConvertFrom-Json
-        
-        $keys = @($config.Keys)
 
-        foreach ($key in $keys) {
-            if ($jsonSettings.PSObject.Properties[$key]) {
-                $config[$key] = $jsonSettings.$key
+        # Refactor 5: Optimized JSON Mapping
+        $jsonSettings.PSObject.Properties | ForEach-Object {
+            if ($config.ContainsKey($_.Name)) {
+                $config[$_.Name] = $_.Value
             }
         }
-        Write-Host "Status:        Settings loaded successfully." -ForegroundColor Gray
+        # Write-Host "Status:        Settings loaded successfully." -ForegroundColor Gray
     }
     catch {
         Write-Host "ERROR:         Failed to parse JSON: $_" -ForegroundColor Red
     }
 }
 else {
-    Write-Host "MISSING:       toolbox.json not found in any search path." -ForegroundColor Yellow
-    Write-Host "FALLBACK:      Using default 'Cliptoo' configuration." -ForegroundColor Yellow
+    # Only show output if missing, as this is a potential issue
+    Write-Host "MISSING:       toolbox.json not found. Attempting auto-discovery..." -ForegroundColor Yellow
 }
 
-# Checks for environment variables with prefix 'BUILDER_' (e.g., BUILDER_PACKAGETITLE, BUILDER_USEVELOPACK)
-# This allows pipeline workflows to override settings without modifying files.
+# Checks for environment variables with prefix 'BUILDER_'
 $envPrefix = "BUILDER_"
 foreach ($key in @($config.Keys)) {
     $envVarName = "$envPrefix$($key.ToUpper())"
     if (Test-Path "env:$envVarName") {
         $envValue = (Get-Item "env:$envVarName").Value
-        
-        # Simple type conversion based on existing value
+
         if ($config[$key] -is [bool]) {
-            $config[$key] = [System.Convert]::ToBoolean($envValue)
+            if ($envValue -match '^(1|true|yes|on)$') {
+                $config[$key] = $true
+            }
+            elseif ($envValue -match '^(0|false|no|off)$') {
+                $config[$key] = $false
+            }
+            else {
+                try {
+                    $config[$key] = [System.Convert]::ToBoolean($envValue)
+                }
+                catch {
+                    Write-Host "WARNING:    Invalid boolean value '$envValue' for $envVarName. Ignoring override." -ForegroundColor Yellow
+                    continue
+                }
+            }
         }
         else {
             $config[$key] = $envValue
         }
-        
-        Write-Host "OVERRIDE:      $key set from environment variable $envVarName" -ForegroundColor Cyan
+
+        # Silenced override confirmation
+        # Write-Host "OVERRIDE:      $key set from environment variable $envVarName" -ForegroundColor Cyan
     }
 }
 
-Write-Host "----------------------------------------------------------------" -ForegroundColor DarkGray
+# -----------------------------------------------------------------------------
+# 3. Auto-Discovery (Portable Mode)
+# -----------------------------------------------------------------------------
+
+# A. Find Solution File
+if ([string]::IsNullOrEmpty($config.SolutionFileName)) {
+    $slnFiles = Get-ChildItem -Path $Script:RepoRoot -Filter "*.sln" -File
+    if ($slnFiles.Count -gt 0) {
+        $config.SolutionFileName = $slnFiles[0].Name
+        # Write-Host "AUTO:          Discovered solution '$($config.SolutionFileName)'" -ForegroundColor Cyan
+        if ($slnFiles.Count -gt 1) {
+            Write-Host "WARNING:       Multiple solutions found. Using the first one." -ForegroundColor Yellow
+        }
+    }
+}
+
+# B. Derive Package Title
+if ([string]::IsNullOrEmpty($config.PackageTitle) -and -not [string]::IsNullOrEmpty($config.SolutionFileName)) {
+    $config.PackageTitle = [System.IO.Path]::GetFileNameWithoutExtension($config.SolutionFileName)
+    # Write-Host "AUTO:          Derived PackageTitle '$($config.PackageTitle)'" -ForegroundColor Cyan
+}
+
+# C. Derive Main Project Name
+if ([string]::IsNullOrEmpty($config.MainProjectName) -and -not [string]::IsNullOrEmpty($config.PackageTitle)) {
+    # Assumption: Main project often shares the name with the Package/Solution
+    $config.MainProjectName = $config.PackageTitle
+}
+
+# D. Find Main Project Path
+if ([string]::IsNullOrEmpty($config.MainProjectSourcePath) -and -not [string]::IsNullOrEmpty($config.MainProjectName)) {
+    $csprojName = "$($config.MainProjectName).csproj"
+    $csproj = Get-ChildItem -Path $Script:RepoRoot -Filter $csprojName -Recurse -File | Select-Object -First 1
+
+    if ($csproj) {
+        # Calculate relative path from RepoRoot
+        $fullDir = $csproj.Directory.FullName
+        if ($fullDir.StartsWith($Script:RepoRoot)) {
+            $relPath = $fullDir.Substring($Script:RepoRoot.Length).TrimStart('\', '/')
+            $config.MainProjectSourcePath = $relPath
+            # Write-Host "AUTO:          Discovered project path '$relPath'" -ForegroundColor Cyan
+        }
+    }
+    else {
+        # Fallback: Assume it's in the root or matches name if not found (will likely fail validation later if wrong)
+        $config.MainProjectSourcePath = $config.MainProjectName
+    }
+}
+
+# Clean termination of config section
+# Write-Host "----------------------------------------------------------------" -ForegroundColor DarkGray
 
 # Apply settings to Script Scope
 $Script:PackageTitle = $config.PackageTitle
@@ -112,10 +187,8 @@ $Script:UseVelopack = [bool]$config.UseVelopack
 $Script:VelopackChannelName = $config.VelopackChannelName
 $Script:RemoveCreateDump = [bool]$config.RemoveCreateDump
 $Script:RemoveXmlFiles = [bool]$config.RemoveXmlFiles
-
-# -----------------------------------------------------------------------------
-# ! Derived Settings - Do not edit below this line.
-# -----------------------------------------------------------------------------
+$Script:XmlKeepPatterns = if ($config.XmlKeepPatterns) { $config.XmlKeepPatterns } else { @() }
+$Script:IdeProcessNames = if ($config.IdeProcessNames) { $config.IdeProcessNames } else { @{} }
 
 $Script:SolutionRoot = if (-not [string]::IsNullOrEmpty($Script:SolutionSubFolder)) { Join-Path $Script:RepoRoot $Script:SolutionSubFolder } else { $Script:RepoRoot }
 $Script:SolutionFile = Join-Path $Script:SolutionRoot $Script:SolutionFileName

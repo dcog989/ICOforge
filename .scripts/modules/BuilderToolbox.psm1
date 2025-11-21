@@ -1,37 +1,9 @@
 # Builder Toolbox for .NET Apps - Module Definition
-# This file loads all component scripts and exports the main functions.
-
-# Refactor 2: Dynamic Module Loading
-# Define core modules that must load first in specific order (Dependencies)
-$coreModules = @(
-    "Classes.ps1",
-    "Configuration.ps1",
-    "Logging.ps1",
-    "Utilities.ps1"
-)
-
-# 1. Load Core Modules
-foreach ($file in $coreModules) {
-    $path = Join-Path $PSScriptRoot $file
-    if (Test-Path $path) {
-        . $path
-    }
-    else {
-        Write-Warning "Core module missing: $file"
-    }
-}
-
-# 2. Load all other modules dynamically (Actions, Tools, etc.)
-Get-ChildItem -Path $PSScriptRoot -Filter "*.ps1" | Where-Object {
-    $_.Name -notin $coreModules -and
-    $_.Name -ne "BuilderToolboxStartup.ps1" # Exclude launcher
-} | Sort-Object Name | ForEach-Object {
-    . $_.FullName
-}
+# This file contains the main execution logic and menu system.
+# Dependencies are now loaded via 'NestedModules' in BuilderToolbox.psd1.
 
 # --- Menu Display ---
 
-# Performance Fix: Cache layout calculation
 $Script:MenuLayoutCache = $null
 
 function Show-Menu {
@@ -68,7 +40,6 @@ function Show-Menu {
     Write-Host "Logging:  $logFileName" -ForegroundColor DarkGray
     Write-Host "-------------------------------------------------------------------------------" -ForegroundColor Green
 
-    # Performance Fix: Calculate menu layout only once (Performance 3)
     if ($null -eq $Script:MenuLayoutCache) {
         $numericKeys = $Script:MenuItems.Keys | Where-Object { $_ -match '^\d+$' } | Sort-Object
         $alphaKeys = $Script:MenuItems.Keys | Where-Object { $_ -match '^[A-Z]$' } | Sort-Object
@@ -183,11 +154,11 @@ function Main {
         # Test prerequisites with detailed error reporting
         try {
             Test-Prerequisites
-            Write-Log "Prerequisites validation passed" "SUCCESS"
+            Write-Log "Pre-flight checks passed." "SUCCESS"
         }
         catch {
-            Write-Log "Prerequisites validation failed: $($_.Exception.Message)" "ERROR"
-            throw "Prerequisites validation failed. Please check your configuration and environment setup."
+            Write-Log "Pre-flight validation failed: $($_.Exception.Message)" "ERROR"
+            throw "Pre-flight validation failed. Please check your configuration and environment setup."
         }
 
         # Determine the effective application name for use throughout the script.

@@ -3,7 +3,7 @@
 # -----------------------------------------------------------------------------
 
 try {
-    # Refactor 2: Import via Manifest (.psd1) instead of Script Module (.psm1)
+    # Import via Manifest (.psd1) instead of Script Module (.psm1)
     # This ensures metadata is loaded and strict versioning/guid rules can be applied.
     $modulePath = Join-Path $PSScriptRoot "BuilderToolbox.psd1"
 
@@ -20,7 +20,6 @@ try {
     # Import the module with comprehensive error handling
     try {
         Import-Module $modulePath -Force -ErrorAction Stop
-        Write-Host "Module imported successfully" -ForegroundColor Green
     }
     catch {
         throw "Failed to import BuilderToolbox module: $($_.Exception.Message)"

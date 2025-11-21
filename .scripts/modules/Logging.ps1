@@ -89,7 +89,7 @@ function Sync-LogBuffer {
                     $fileStream = [System.IO.File]::Open($logFile, [System.IO.FileMode]::Append, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
                     $writer = [System.IO.StreamWriter]::new($fileStream)
 
-                    # Performance Fix: Write all lines in one go if buffer is small,
+                    # Write all lines in one go if buffer is small,
                     # or iterate efficiently to leverage StreamWriter's internal buffering
                     foreach ($entry in $Script:LogBuffer) {
                         $writer.WriteLine($entry)

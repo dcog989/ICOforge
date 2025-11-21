@@ -118,11 +118,7 @@ function Confirm-IdeShutdown {
     [CmdletBinding()]
     param([string]$Action)
 
-    $ideProcesses = @{
-        "devenv"  = "Visual Studio";
-        "Code"    = "Visual Studio Code";
-        "rider64" = "JetBrains Rider"
-    }
+    $ideProcesses = $Script:IdeProcessNames
 
     $runningIdes = [System.Collections.Generic.List[string]]::new()
     foreach ($procName in $ideProcesses.Keys) {

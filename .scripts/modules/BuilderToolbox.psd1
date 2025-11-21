@@ -39,5 +39,18 @@
     AliasesToExport      = @()
 
     # List of all modules packaged with this module
-    NestedModules        = @()
+    # Order matters: Core dependencies first, then feature modules.
+    NestedModules        = @(
+        'Classes.ps1',
+        'Configuration.ps1',
+        'Logging.ps1',
+        'Utilities.ps1',
+        'Dotnet.ps1',
+        'GitAndTools.ps1',
+        'BuildActions.ps1',
+        'PackageActions.ps1',
+        'PublishActions.ps1',
+        'MaintenanceActions.ps1',
+        'ExplorerActions.ps1'
+    )
 }

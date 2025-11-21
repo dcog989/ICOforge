@@ -12,5 +12,15 @@
     "UseVelopack": false,
     "VelopackChannelName": "prod",
     "RemoveCreateDump": true,
-    "RemoveXmlFiles": true
+    "RemoveXmlFiles": true,
+    "XmlKeepPatterns": [
+        "MyProject.API.xml",
+        "Swagger.xml"
+    ],
+    "IdeProcessNames": {
+        "devenv": "Visual Studio",
+        "Code": "Visual Studio Code",
+        "rider64": "JetBrains Rider",
+        "notepad++": "Notepad++"
+    }
 }

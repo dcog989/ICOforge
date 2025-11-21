@@ -25,7 +25,7 @@ function Initialize-PublishContext {
     }
 }
 
-function Perform-PostPublishCleanup {
+function Invoke-PostPublishCleanup {
     param(
         [string]$PublishDir
     )
@@ -36,7 +36,25 @@ function Perform-PostPublishCleanup {
     }
 
     if ($Script:RemoveXmlFiles) {
-        $removedCount = Remove-FilesByPattern -Path $PublishDir -Patterns @("*.xml")
+        $keepPatterns = if ($Script:XmlKeepPatterns) { $Script:XmlKeepPatterns } else { @() }
+
+        $xmlFiles = Get-ChildItem -Path $PublishDir -Filter "*.xml" -Recurse -File -ErrorAction SilentlyContinue
+        $removedCount = 0
+
+        foreach ($file in $xmlFiles) {
+            $shouldKeep = $false
+            foreach ($pattern in $keepPatterns) {
+                if ($file.Name -like $pattern) {
+                    $shouldKeep = $true
+                    break
+                }
+            }
+
+            if (-not $shouldKeep) {
+                Remove-Item -Path $file.FullName -Force -ErrorAction SilentlyContinue
+                $removedCount++
+            }
+        }
         Write-Log "Removed $removedCount documentation files (*.xml)."
     }
 
@@ -44,7 +62,6 @@ function Perform-PostPublishCleanup {
     Write-Log "Removed $removedPdbCount debug symbols (*.pdb)."
 }
 
-# Refactor 3: Centralized Build Logic
 function Invoke-PublishBuild {
     param(
         [string]$OutputDir,
@@ -66,11 +83,10 @@ function Invoke-PublishBuild {
         return $false
     }
 
-    Perform-PostPublishCleanup -PublishDir $OutputDir
+    Invoke-PostPublishCleanup -PublishDir $OutputDir
     return $true
 }
 
-# Refactor 3: Centralized Archiving Logic
 function Invoke-ArchivePackaging {
     param(
         [string]$SourceDir,
@@ -86,7 +102,7 @@ function Invoke-ArchivePackaging {
         Set-Content -Path $portableMarkerPath -Value "This file enables portable mode. Do not delete."
     }
 
-    if (-not $Script:SevenZipPath) { $Script:SevenZipPath = Find-7ZipExecutable }
+    $sevenZipPath = Find-7ZipExecutable
 
     $archiveFileName = [string]::Format($ArchiveFormat, $Script:PackageTitle, $Version)
     $destinationArchive = Join-Path $OutputDir $archiveFileName
@@ -95,7 +111,11 @@ function Invoke-ArchivePackaging {
         Remove-Item $destinationArchive -Force
     }
 
-    $archiveResult = Compress-With7Zip -SourceDir $SourceDir -ArchivePath $destinationArchive
+    $archiveResult = Compress-With7Zip `
+        -SourceDir $SourceDir `
+        -ArchivePath $destinationArchive `
+        -ToolPath $sevenZipPath
+
     if (-not $archiveResult.Success) {
         Write-Log "Archiving failed: $($archiveResult.Message)" "ERROR"
         return $false
@@ -113,8 +133,8 @@ function Publish-Portable {
     if (-not (Test-Path $packageDir)) { New-Item -ItemType Directory -Path $packageDir -Force | Out-Null }
 
     # 1. Build
-    $args = "`"$Script:MainProjectFile`" -c Release -r $Script:PublishRuntimeId --self-contained true -o `"$($context.PublishDir)`""
-    $success = Invoke-PublishBuild -OutputDir $context.PublishDir -Arguments $args -ActionDescription "Building Portable Package"
+    $buildArgs = "`"$Script:MainProjectFile`" -c Release -r $Script:PublishRuntimeId --self-contained true -o `"$($context.PublishDir)`""
+    $success = Invoke-PublishBuild -OutputDir $context.PublishDir -Arguments $buildArgs -ActionDescription "Building Portable Package"
     if (-not $success) { return }
 
     # 2. Package
@@ -152,7 +172,7 @@ function New-ProductionPackage {
         $channelArg = if (-not [string]::IsNullOrEmpty($Script:VelopackChannelName)) { "-c $($Script:VelopackChannelName)" } else { "" }
 
         Write-Log "Packaging with Velopack..." "CONSOLE"
-        $velopackArgs = "pack --packId `"$($Script:PackageId)`" --packVersion $($context.Version) --packDir `"$($context.PublishDir)`" -o `"$releaseDir`" $iconArg $channelArg --verbose"
+        $velopackArgs = "pack --packId `"$($Script:PackageId)`" --packId $($Script:PackageId) --packVersion $($context.Version) --packDir `"$($context.PublishDir)`" -o `"$releaseDir`" $iconArg $channelArg --verbose"
 
         Write-Log "DIAGNOSTIC - Executing command: vpk $velopackArgs"
         $packResult = Invoke-ExternalCommand -ExecutablePath "vpk" -Arguments $velopackArgs

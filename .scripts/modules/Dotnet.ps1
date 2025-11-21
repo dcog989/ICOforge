@@ -8,13 +8,13 @@ function Test-DotNetVersion {
     }
 
     $versionOutput = (dotnet --version 2>$null).Trim()
-    
+
     # Parse installed version (remove preview suffixes for comparison)
     $cleanInstalled = $versionOutput -replace '-.*$', ''
 
     try {
         $installedVersion = [version]$cleanInstalled
-        
+
         # Handle single integer input for requirement (e.g. "9" -> "9.0")
         $reqString = if ($Script:RequiredDotNetVersion -notmatch "\.") { "$($Script:RequiredDotNetVersion).0" } else { $Script:RequiredDotNetVersion }
         $requiredVersion = [version]$reqString
@@ -35,7 +35,7 @@ function Test-DotNetVersion {
             $Script:SdkVersion = $versionOutput
             return [CommandResult]::Ok("Found version $versionOutput", $versionOutput)
         }
-        
+
         $msg = "Version check failed. Required: $Script:RequiredDotNetVersion, Found: $versionOutput. Error: $_"
         return [CommandResult]::Fail($msg)
     }
@@ -91,12 +91,15 @@ function Invoke-ExternalCommand {
     }
 
     $process = $null
+    $streamWriter = $null
 
     try {
         $process = [System.Diagnostics.Process]::Start($processInfo)
 
-        # Performance Fix: Stream output to file instead of loading into memory (Performance 2)
-        # This prevents OutOfMemory exceptions on large build logs.
+        # Use StreamWriter for continuous logging instead of Add-Content
+        # This avoids opening/closing the file handle for every single line of output.
+        $streamWriter = [System.IO.File]::AppendText($logFile)
+        $streamWriter.AutoFlush = $true
 
         # We'll capture the last few lines for error reporting if needed
         $errorBuffer = [System.Collections.Generic.Queue[string]]::new()
@@ -107,7 +110,7 @@ function Invoke-ExternalCommand {
             while (-not $process.StandardOutput.EndOfStream) {
                 $line = $process.StandardOutput.ReadLine()
                 if ($line) {
-                    Add-Content -Path $logFile -Value $line
+                    $streamWriter.WriteLine($line)
                 }
             }
 
@@ -116,7 +119,7 @@ function Invoke-ExternalCommand {
                 $line = $process.StandardError.ReadLine()
                 if ($line) {
                     $logLine = "ERROR: $line"
-                    Add-Content -Path $logFile -Value $logLine
+                    $streamWriter.WriteLine($logLine)
 
                     # Keep recent errors for return message
                     $errorBuffer.Enqueue($line)
@@ -129,11 +132,11 @@ function Invoke-ExternalCommand {
 
         # Flush any remaining output after exit
         $remainingOut = $process.StandardOutput.ReadToEnd()
-        if ($remainingOut) { Add-Content -Path $logFile -Value $remainingOut }
+        if ($remainingOut) { $streamWriter.Write($remainingOut) }
 
         $remainingErr = $process.StandardError.ReadToEnd()
         if ($remainingErr) {
-            Add-Content -Path $logFile -Value "ERROR: $remainingErr"
+            $streamWriter.WriteLine("ERROR: $remainingErr")
             foreach ($line in ($remainingErr -split "`n")) {
                 $errorBuffer.Enqueue($line.Trim())
                 if ($errorBuffer.Count -gt $maxErrorLines) { $errorBuffer.Dequeue() | Out-Null }
@@ -146,7 +149,6 @@ function Invoke-ExternalCommand {
             return [CommandResult]::Ok("External command successful", @{ ExitCode = $process.ExitCode })
         }
         else {
-            # Construct a failure message with the last few error lines
             $recentErrors = $errorBuffer.ToArray() -join "`n"
             $failureMsg = "Process exited with code $($process.ExitCode). See log for full details."
             if (-not [string]::IsNullOrWhiteSpace($recentErrors)) {
@@ -160,6 +162,9 @@ function Invoke-ExternalCommand {
         return [CommandResult]::Fail("Error starting process: $($_.Exception.Message)")
     }
     finally {
+        if ($streamWriter) {
+            $streamWriter.Dispose()
+        }
         if ($process) {
             if (!$process.HasExited) {
                 $process.Kill()
@@ -179,11 +184,10 @@ function Get-EffectiveAppName {
 
     if (Test-Path $Script:MainProjectFile) {
         try {
-            # Refactor 1: Use System.Xml.Linq (XDocument) for consistent XML parsing
             Add-Type -AssemblyName System.Xml.Linq
             $doc = [System.Xml.Linq.XDocument]::Load($Script:MainProjectFile)
             $ns = $doc.Root.Name.Namespace
-            
+
             $assemblyNameNode = $doc.Descendants($ns + "AssemblyName") | Select-Object -First 1
 
             if ($null -ne $assemblyNameNode -and -not [string]::IsNullOrWhiteSpace($assemblyNameNode.Value)) {
@@ -210,11 +214,10 @@ function Get-BuildVersion {
     }
 
     try {
-        # Refactor 1: Use System.Xml.Linq (XDocument) for consistent XML parsing
         Add-Type -AssemblyName System.Xml.Linq
         $doc = [System.Xml.Linq.XDocument]::Load($Script:MainProjectFile)
         $ns = $doc.Root.Name.Namespace
-        
+
         $versionNode = $doc.Descendants($ns + "Version") | Select-Object -First 1
 
         if ($null -ne $versionNode) {

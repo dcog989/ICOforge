@@ -15,7 +15,6 @@ function Get-OutdatedPackages {
     $process = $null
     try {
         $logFile = Get-LogFile
-        # Bug 2 Fix: Use JSON format for robust parsing instead of text scraping
         $arguments = "list `"$($Script:SolutionFile)`" package --outdated --format json"
 
         Write-Log "Executing: dotnet $arguments"

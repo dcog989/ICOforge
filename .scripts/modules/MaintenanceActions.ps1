@@ -26,14 +26,14 @@ function Remove-BuildOutput {
     $buildDirs = @()
     foreach ($searchPath in $searchPaths) {
         Write-Log "Searching for build directories in: $searchPath"
-        
+
         # This prevents accidental deletion of asset folders named 'obj' or 'bin'
         $foundDirs = Get-ChildItem -Path $searchPath -Include "bin", "obj" -Directory -Recurse -ErrorAction SilentlyContinue | Where-Object {
             $parentDir = $_.Parent.FullName
             $hasProjectFile = Get-ChildItem -Path $parentDir -Filter "*.*proj" -File -ErrorAction SilentlyContinue | Select-Object -First 1
             return [bool]$hasProjectFile
         }
-        
+
         $buildDirs += $foundDirs
     }
 
@@ -57,7 +57,7 @@ function Remove-BuildOutput {
 
         foreach ($dir in $buildDirs) {
             $counter++
-            
+
             if ($PSCmdlet.ShouldProcess($dir.FullName, "Delete directory recursively")) {
                 $percentComplete = ($counter / $total) * 100
                 Write-Progress -Activity "Cleaning build directories" -Status "Removing $($dir.Name)" -PercentComplete $percentComplete -CurrentOperation $dir.FullName
@@ -120,7 +120,7 @@ function Remove-BuildOutput {
 function Update-VersionNumber {
     [CmdletBinding(SupportsShouldProcess = $true)]
     param()
-    
+
     if (-not (Test-ProjectFilesExist)) { return }
     if (-not (Confirm-IdeShutdown -Action "Change Version Number")) { return }
 
@@ -143,17 +143,16 @@ function Update-VersionNumber {
         return
     }
 
-    # Refactor 4: Use XDocument for robust XML handling and whitespace preservation
     try {
         Add-Type -AssemblyName System.Xml.Linq
-        
+
         # Load with PreserveWhitespace to keep existing indentation
         $doc = [System.Xml.Linq.XDocument]::Load($Script:MainProjectFile, [System.Xml.Linq.LoadOptions]::PreserveWhitespace)
         $ns = $doc.Root.Name.Namespace
-        
+
         # Find existing Version element regardless of where it is
         $versionElement = $doc.Descendants($ns + "Version") | Select-Object -First 1
-        
+
         if ($versionElement) {
             $versionElement.Value = $newVersion
         }
@@ -163,7 +162,7 @@ function Update-VersionNumber {
             if ($propertyGroup) {
                 # Construct new element
                 $newEl = [System.Xml.Linq.XElement]::new($ns + "Version", $newVersion)
-                
+
                 # Attempt to mimic indentation of the last element in the group
                 if ($propertyGroup.LastNode.NodeType -eq [System.Xml.XmlNodeType]::Text) {
                     $propertyGroup.Add($propertyGroup.LastNode) # Copy whitespace

@@ -3,34 +3,71 @@
 $Script:GitInfoCache = $null
 
 function Find-7ZipExecutable {
-    # 1. Check PATH
-    $sevenZipInPath = Get-Command 7za.exe -ErrorAction SilentlyContinue
-    if ($null -ne $sevenZipInPath) {
-        Write-Log "Found 7za.exe in PATH: $($sevenZipInPath.Source)"
-        return $sevenZipInPath.Source
+    # 1. Define candidates and their dependencies
+    # 7za.exe is standalone. 7z.exe requires 7z.dll.
+    $candidates = @(
+        @{ Name = "7za.exe"; Dependency = $null },
+        @{ Name = "7z.exe"; Dependency = "7z.dll" }
+    )
+
+    # 2. Define search paths
+    $searchPaths = @(
+        $Script:RepoRoot,
+        (Join-Path $Script:RepoRoot "7z"),
+        "$env:ProgramFiles\7-Zip",
+        "${env:ProgramFiles(x86)}\7-Zip"
+    )
+
+    foreach ($candidate in $candidates) {
+        $exeName = $candidate.Name
+
+        # A. Check PATH first
+        $inPath = Get-Command $exeName -ErrorAction SilentlyContinue
+        if ($inPath) {
+            $path = $inPath.Source
+            # If it has a dependency, verify it exists next to the executable
+            if ($candidate.Dependency) {
+                $dir = Split-Path $path -Parent
+                $depPath = Join-Path $dir $candidate.Dependency
+                if (Test-Path $depPath) {
+                    Write-Log "Found valid $exeName (with $($candidate.Dependency)) in PATH: $path"
+                    return $path
+                }
+            }
+            else {
+                Write-Log "Found $exeName in PATH: $path"
+                return $path
+            }
+        }
+
+        # B. Check explicit search paths
+        foreach ($basePath in $searchPaths) {
+            $fullPath = Join-Path $basePath $exeName
+            if (Test-Path $fullPath) {
+                if ($candidate.Dependency) {
+                    $depPath = Join-Path $basePath $candidate.Dependency
+                    if (Test-Path $depPath) {
+                        Write-Log "Found valid $exeName (with $($candidate.Dependency)) in: $fullPath"
+                        return $fullPath
+                    }
+                }
+                else {
+                    Write-Log "Found $exeName in: $fullPath"
+                    return $fullPath
+                }
+            }
+        }
     }
 
-    # 2. Check repo root
-    $sevenZipAtRoot = Join-Path $Script:RepoRoot "7za.exe"
-    if (Test-Path $sevenZipAtRoot) {
-        Write-Log "Found 7za.exe in repo root: $sevenZipAtRoot"
-        return $sevenZipAtRoot
-    }
-
-    # 3. Check 7z subdirectory in repo root
-    $sevenZipInSubDir = Join-Path $Script:RepoRoot "7z/7za.exe"
-    if (Test-Path $sevenZipInSubDir) {
-        Write-Log "Found 7za.exe in 7z subdirectory: $sevenZipInSubDir"
-        return $sevenZipInSubDir
-    }
-
-    # Not found
-    Write-Log "7za.exe not found. Will fall back to PowerShell's Compress-Archive for packaging." "WARN"
+    Write-Log "7-Zip executable (7za.exe or valid 7z.exe) not found. Will fall back to PowerShell's Compress-Archive." "WARN"
     return $null
 }
 
+function Clear-GitInfoCache {
+    $Script:GitInfoCache = $null
+}
+
 function Get-GitInfo {
-    # Performance Fix: Cache Git info to prevent process creation on every menu refresh (Performance 4)
     if ($null -ne $Script:GitInfoCache) {
         return $Script:GitInfoCache
     }
@@ -38,29 +75,23 @@ function Get-GitInfo {
     $gitInfo = @{ Branch = "N/A"; Commit = "N/A" }
 
     if (Get-Command git -ErrorAction SilentlyContinue) {
-        # First, check if the solution root is a git repository before running other commands.
-        git -C $Script:SolutionRoot rev-parse --is-inside-work-tree 2>$null | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            $Script:GitInfoCache = $gitInfo
-            return $gitInfo
-        }
+        # Optimization: Check if .git directory exists before spawning git process
+        # This avoids the overhead of 'git rev-parse' on non-git folders
+        if (Test-Path (Join-Path $Script:SolutionRoot ".git")) {
+            try {
+                $branchOutput = git -C $Script:SolutionRoot rev-parse --abbrev-ref HEAD 2>$null
+                if ($null -ne $branchOutput) {
+                    $gitInfo.Branch = $branchOutput.Trim()
+                }
 
-        try {
-            $branchOutput = git -C $Script:SolutionRoot rev-parse --abbrev-ref HEAD 2>$null
-            if ($null -ne $branchOutput) {
-                $gitInfo.Branch = $branchOutput.Trim()
+                $commitOutput = git -C $Script:SolutionRoot rev-parse --short HEAD 2>$null
+                if ($null -ne $commitOutput) {
+                    $gitInfo.Commit = $commitOutput.Trim()
+                }
             }
-
-            $commitOutput = git -C $Script:SolutionRoot rev-parse --short HEAD 2>$null
-            if ($null -ne $commitOutput) {
-                $gitInfo.Commit = $commitOutput.Trim()
+            catch {
+                Write-Log "Failed to get Git info: $_" "WARN"
             }
-
-            if ([string]::IsNullOrWhiteSpace($gitInfo.Branch)) { $gitInfo.Branch = "N/A" }
-            if ([string]::IsNullOrWhiteSpace($gitInfo.Commit)) { $gitInfo.Commit = "N/A" }
-        }
-        catch {
-            Write-Log "Failed to get Git info: $_" "WARN"
         }
     }
 
@@ -171,10 +202,15 @@ function Compress-With7Zip {
         [Parameter(Mandatory = $true)]
         [string]$SourceDir,
         [Parameter(Mandatory = $true)]
-        [string]$ArchivePath
+        [string]$ArchivePath,
+        [string]$ToolPath = $null
     )
 
-    if ([string]::IsNullOrEmpty($Script:SevenZipPath)) {
+    # Use the provided tool path or resolve it internally if not provided.
+    # This decouples the function from the global $Script scope.
+    $7z = if (-not [string]::IsNullOrEmpty($ToolPath)) { $ToolPath } else { Find-7ZipExecutable }
+
+    if ([string]::IsNullOrEmpty($7z)) {
         Write-Log "7-Zip not found. Using Compress-Archive instead." "WARN"
 
         $parentDir = Split-Path $ArchivePath -Parent
@@ -183,7 +219,7 @@ function Compress-With7Zip {
         }
 
         try {
-            # Compress-Archive has a different argument structure for paths/wildcards
+            # Compress-Archive requires strict path handling
             $filesToCompress = Get-ChildItem -Path $SourceDir -Force
             Compress-Archive -Path $filesToCompress.FullName -DestinationPath $ArchivePath -CompressionLevel Optimal -Force
             return [CommandResult]::Ok("Archive created using Compress-Archive", $ArchivePath)
@@ -193,9 +229,9 @@ function Compress-With7Zip {
         }
     }
 
-    # 7-Zip argument handling is kept as original for fidelity, but noted as a refactor opportunity
+    # Use the specific executable found
     $sevenZipArgs = "a -t7z -mx=3 `"$ArchivePath`" `"$SourceDir\*`""
-    $result = Invoke-ExternalCommand -ExecutablePath $Script:SevenZipPath -Arguments $sevenZipArgs
+    $result = Invoke-ExternalCommand -ExecutablePath $7z -Arguments $sevenZipArgs
 
     if ($result.Success) {
         return [CommandResult]::Ok("7-Zip archive created at", $ArchivePath)
