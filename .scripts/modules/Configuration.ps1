@@ -44,11 +44,11 @@ $config = @{
     }
 }
 
-# Define search paths for toolbox.json
+# Define search paths for BuilderToolbox-config.json
 $searchPaths = @(
-    (Join-Path $Script:RepoRoot "toolbox.json"),                            # Repo Root
-    (Join-Path (Split-Path $PSScriptRoot -Parent) "toolbox.json"),          # .scripts folder
-    (Join-Path $PSScriptRoot "toolbox.json")                                # modules folder
+    (Join-Path $Script:RepoRoot "BuilderToolbox-config.json"),                            # Repo Root
+    (Join-Path (Split-Path $PSScriptRoot -Parent) "BuilderToolbox-config.json"),          # .scripts folder
+    (Join-Path $PSScriptRoot "BuilderToolbox-config.json")                                # modules folder
 )
 
 # Diagnostic Output
@@ -56,7 +56,7 @@ $searchPaths = @(
 # Write-Host "----------------------------------------------------------------" -ForegroundColor DarkGray
 # Write-Host "Configuration Diagnostics" -ForegroundColor Cyan
 # Write-Host "Repo Root:     $($Script:RepoRoot)" -ForegroundColor Gray
-# Write-Host "Searching for: toolbox.json" -ForegroundColor Gray
+# Write-Host "Searching for: BuilderToolbox-config.json" -ForegroundColor Gray
 
 $configFile = $null
 foreach ($path in $searchPaths) {
@@ -85,7 +85,7 @@ if ($configFile) {
 }
 else {
     # Only show output if missing, as this is a potential issue
-    Write-Host "MISSING:       toolbox.json not found. Attempting auto-discovery..." -ForegroundColor Yellow
+    Write-Host "MISSING:       BuilderToolbox-config.json not found. Attempting auto-discovery..." -ForegroundColor Yellow
 }
 
 # Checks for environment variables with prefix 'BUILDER_'
