@@ -79,39 +79,19 @@ function Invoke-WithStandardErrorHandling {
 }
 
 function Clear-ScreenRobust {
-    # Force complete clearing of all progress bars
+    # Standard screen clear is now sufficient since we aren't fighting
+    # progress bar artifacts or buffer ghosting anymore.
     try {
-        Write-Progress -Completed
-        Write-Progress -Activity " " -Status " " -Completed
-        Start-Sleep -Milliseconds 150  # Increased from 50ms for stability
-    }
-    catch { }
-
-    # Clear screen using most reliable method
-    try {
-        $Host.UI.RawUI.Clear()
+        [System.Console]::Clear()
     }
     catch {
-        try {
-            Clear-Host
-        }
-        catch {
-            try {
-                [System.Console]::Clear()
-            }
-            catch {
-                # Nuclear option - push content off screen
-                Write-Host ("`n" * 50)
-            }
-        }
+        Clear-Host
     }
 
-    # Ensure output buffers are flushed
+    # Flushing buffers is still good practice to ensure
+    # logs are fully written before the menu redraws.
     [System.Console]::Out.Flush()
     [System.Console]::Error.Flush()
-
-    # Trailing delay to ensure screen clear completes
-    Start-Sleep -Milliseconds 50
 }
 
 function Confirm-IdeShutdown {

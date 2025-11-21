@@ -2,20 +2,25 @@
 
 function Remove-BuildOutput {
     [CmdletBinding(SupportsShouldProcess = $true)]
-    param([switch]$NoConfirm)
+    param(
+        [switch]$NoConfirm,
+        [switch]$Quiet
+    )
 
     if (-not $NoConfirm) {
         if (-not (Confirm-IdeShutdown -Action "Clean Solution")) { return }
         if (-not (Confirm-ProcessTermination -Action "Clean")) { return }
     }
 
-    Write-Log "Cleaning build files..." "CONSOLE"
+    if (-not $Quiet) {
+        Write-Log "Cleaning build files..." "CONSOLE"
+    }
 
     # Method 1: Use dotnet clean for proper .NET cleanup
     if ($PSCmdlet.ShouldProcess("$($Script:SolutionFile)", "Run 'dotnet clean'")) {
-        Write-Log "Running 'dotnet clean'..."
+        if (-not $Quiet) { Write-Log "Running 'dotnet clean'..." }
         $cleanResult = Invoke-DotnetCommand -Command "clean" -Arguments "`"$Script:SolutionFile`" -c Release -v minimal" -IgnoreErrors
-        if ($cleanResult.Success) {
+        if ($cleanResult.Success -and -not $Quiet) {
             Write-Log "Dotnet clean completed" "SUCCESS"
         }
     }
@@ -25,9 +30,8 @@ function Remove-BuildOutput {
 
     $buildDirs = @()
     foreach ($searchPath in $searchPaths) {
-        Write-Log "Searching for build directories in: $searchPath"
+        if (-not $Quiet) { Write-Log "Searching for build directories in: $searchPath" }
 
-        # This prevents accidental deletion of asset folders named 'obj' or 'bin'
         $foundDirs = Get-ChildItem -Path $searchPath -Include "bin", "obj" -Directory -Recurse -ErrorAction SilentlyContinue | Where-Object {
             $parentDir = $_.Parent.FullName
             $hasProjectFile = Get-ChildItem -Path $parentDir -Filter "*.*proj" -File -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -45,23 +49,20 @@ function Remove-BuildOutput {
             $true
         }
         catch {
-            Write-Log "Skipping locked directory: $($_.FullName)" "WARN"
+            if (-not $Quiet) { Write-Log "Skipping locked directory: $($_.FullName)" "WARN" }
             $false
         }
     }
 
     if ($buildDirs.Count -gt 0) {
-        Write-Log "Found $($buildDirs.Count) build directories to remove"
+        if (-not $Quiet) { Write-Log "Found $($buildDirs.Count) build directories to remove" }
         $counter = 0
-        $total = $buildDirs.Count
 
         foreach ($dir in $buildDirs) {
             $counter++
 
             if ($PSCmdlet.ShouldProcess($dir.FullName, "Delete directory recursively")) {
-                $percentComplete = ($counter / $total) * 100
-                Write-Progress -Activity "Cleaning build directories" -Status "Removing $($dir.Name)" -PercentComplete $percentComplete -CurrentOperation $dir.FullName
-
+                # Progress bars removed to prevent console buffer ghosting artifacts
                 try {
                     Remove-Item -Path $dir.FullName -Recurse -Force -ErrorAction Stop
                     Write-Log "Removed: $($dir.FullName)" "DEBUG"
@@ -72,14 +73,12 @@ function Remove-BuildOutput {
             }
         }
 
-        if (-not $WhatIfPreference) {
-            Write-Progress -Activity "Cleaning build directories" -Completed
-            Start-Sleep -Milliseconds 100  # Ensure progress bar clears
+        if (-not $WhatIfPreference -and -not $Quiet) {
             Write-Log "Removed $($buildDirs.Count) build directories" "SUCCESS"
         }
     }
     else {
-        Write-Log "No 'bin' or 'obj' directories found to clean."
+        if (-not $Quiet) { Write-Log "No 'bin' or 'obj' directories found to clean." }
     }
 
     # Cleanup Velopack releases if enabled
@@ -87,10 +86,10 @@ function Remove-BuildOutput {
         $releaseDir = Join-Path $Script:SolutionRoot "Releases"
         if (Test-Path $releaseDir) {
             if ($PSCmdlet.ShouldProcess($releaseDir, "Delete Velopack releases")) {
-                Write-Log "Removing Velopack releases directory..."
+                if (-not $Quiet) { Write-Log "Removing Velopack releases directory..." }
                 try {
                     Remove-Item -Path $releaseDir -Recurse -Force -ErrorAction Stop
-                    Write-Log "Removed Velopack releases directory." "SUCCESS"
+                    if (-not $Quiet) { Write-Log "Removed Velopack releases directory." "SUCCESS" }
                 }
                 catch {
                     Write-Log "Failed to remove Velopack releases: $($_.Exception.Message)" "WARN"
@@ -114,7 +113,7 @@ function Remove-BuildOutput {
     }
 
     Clear-BuildVersionCache
-    Write-Log "Cleanup completed." "SUCCESS"
+    if (-not $Quiet) { Write-Log "Cleanup completed." "SUCCESS" }
 }
 
 function Update-VersionNumber {

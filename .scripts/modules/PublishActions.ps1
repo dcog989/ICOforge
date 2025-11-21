@@ -16,7 +16,8 @@ function Initialize-PublishContext {
     $baseOutputDir = Join-Path $mainProjectDir "bin\Release\$($Script:TargetFramework)\$($Script:PublishRuntimeId)"
 
     # Pre-clean the solution before building
-    Remove-BuildOutput -NoConfirm
+    # Added -Quiet to prevent progress bar ghosting/spam during publish operations
+    Remove-BuildOutput -NoConfirm -Quiet
 
     return [PSCustomObject]@{
         BaseOutputDir = $baseOutputDir
