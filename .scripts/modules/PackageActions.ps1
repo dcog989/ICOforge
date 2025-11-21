@@ -39,7 +39,13 @@ function Get-OutdatedPackages {
 
         if ($process.ExitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($output)) {
             try {
-                $json = $output | ConvertFrom-Json
+                # Extract JSON content only (ignoring potential MSBuild output/banners)
+                $jsonContent = $output
+                if ($output -match '(?ms)(\{.*\})') {
+                    $jsonContent = $matches[1]
+                }
+
+                $json = $jsonContent | ConvertFrom-Json
                 $updatesFound = $false
                 $summary = [System.Text.StringBuilder]::new()
 

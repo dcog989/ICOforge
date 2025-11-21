@@ -16,12 +16,10 @@ function Open-LatestLogFile {
         }
         else {
             Write-Log "No logs found to open." "WARN"
-            Write-Host "No logs found to open." -ForegroundColor Yellow
         }
     }
     else {
         Write-Log "Log directory not found." "WARN"
-        Write-Host "Log directory not found." -ForegroundColor Yellow
     }
 }
 

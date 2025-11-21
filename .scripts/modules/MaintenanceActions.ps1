@@ -32,13 +32,27 @@ function Remove-BuildOutput {
     foreach ($searchPath in $searchPaths) {
         if (-not $Quiet) { Write-Log "Searching for build directories in: $searchPath" }
 
-        $foundDirs = Get-ChildItem -Path $searchPath -Include "bin", "obj" -Directory -Recurse -ErrorAction SilentlyContinue | Where-Object {
-            $parentDir = $_.Parent.FullName
-            $hasProjectFile = Get-ChildItem -Path $parentDir -Filter "*.*proj" -File -ErrorAction SilentlyContinue | Select-Object -First 1
-            return [bool]$hasProjectFile
-        }
+        # use specific filters for 'bin' and 'obj' separately for higher reliability than -Include
+        $binDirs = Get-ChildItem -Path $searchPath -Filter "bin" -Directory -Recurse -Force -ErrorAction SilentlyContinue
+        $objDirs = Get-ChildItem -Path $searchPath -Filter "obj" -Directory -Recurse -Force -ErrorAction SilentlyContinue
+        
+        # Ensure we don't add nulls to the array if Get-ChildItem returns nothing
+        $potentialDirs = @()
+        if ($binDirs) { $potentialDirs += $binDirs }
+        if ($objDirs) { $potentialDirs += $objDirs }
 
-        $buildDirs += $foundDirs
+        foreach ($dir in $potentialDirs) {
+            # Double check dir object is valid
+            if (-not $dir) { continue }
+
+            $parentDir = $dir.Parent.FullName
+            # Safety check: Ensure parent directory contains a project file
+            $hasProjectFile = Get-ChildItem -Path $parentDir -Filter "*.*proj" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+
+            if ($hasProjectFile) {
+                $buildDirs += $dir
+            }
+        }
     }
 
     # Remove duplicates and exclude any paths that might be in use
@@ -62,8 +76,8 @@ function Remove-BuildOutput {
             $counter++
 
             if ($PSCmdlet.ShouldProcess($dir.FullName, "Delete directory recursively")) {
-                # Progress bars removed to prevent console buffer ghosting artifacts
                 try {
+                    # Retry logic for stubborn locks
                     Remove-Item -Path $dir.FullName -Recurse -Force -ErrorAction Stop
                     Write-Log "Removed: $($dir.FullName)" "DEBUG"
                 }

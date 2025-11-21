@@ -124,10 +124,13 @@ function New-ChangelogFromGit {
 
     try {
         # Use 'git tag --sort' to find the latest version tag across all branches, which is more reliable.
-        $latestTag = (git -C $Script:SolutionRoot tag --sort=-v:refname | Select-Object -First 1).Trim()
-        if ([string]::IsNullOrEmpty($latestTag)) {
+        $tagObj = git -C $Script:SolutionRoot tag --sort=-v:refname | Select-Object -First 1
+        
+        if ([string]::IsNullOrWhiteSpace($tagObj)) {
             throw "No tags found."
         }
+
+        $latestTag = $tagObj.Trim()
 
         Write-Log "Found latest tag: '$latestTag'. Generating changelog from new commits."
         $commitRange = "$latestTag..HEAD"

@@ -1,6 +1,17 @@
 # Builder Toolbox - Configuration & Paths
 
 # -----------------------------------------------------------------------------
+# 0. Global Environment Settings
+# -----------------------------------------------------------------------------
+# Suppress all PowerShell progress bars to prevent console ghosting artifacts
+$ProgressPreference = 'SilentlyContinue'
+
+# Suppress .NET CLI noise
+$env:DOTNET_NOLOGO = 'true'
+$env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = 'true'
+$env:DOTNET_CLI_TELEMETRY_OPTOUT = 'true'
+
+# -----------------------------------------------------------------------------
 # 1. Path Discovery & Context
 # -----------------------------------------------------------------------------
 $Script:PSScriptRoot = (Split-Path -Parent $PSCommandPath)
@@ -127,7 +138,9 @@ foreach ($key in @($config.Keys)) {
 
 # A. Find Solution File
 if ([string]::IsNullOrEmpty($config.SolutionFileName)) {
-    $slnFiles = Get-ChildItem -Path $Script:RepoRoot -Filter "*.sln" -File
+    # Support both legacy .sln and modern .slnx formats
+    $slnFiles = Get-ChildItem -Path $Script:RepoRoot -File | Where-Object { $_.Extension -eq ".sln" -or $_.Extension -eq ".slnx" }
+    
     if ($slnFiles.Count -gt 0) {
         $config.SolutionFileName = $slnFiles[0].Name
         # Write-Host "AUTO:          Discovered solution '$($config.SolutionFileName)'" -ForegroundColor Cyan
@@ -201,6 +214,18 @@ $Script:PackageId = $Script:PackageTitle
 $Script:PackageIconPath = Join-Path $Script:MainProjectDir "Assets/Icons/$($Script:PackageTitle.ToLower()).ico"
 $Script:MainExeName = "$($Script:MainProjectName).exe"
 $Script:AppDataFolderName = $Script:PackageTitle
+
+# Helper to safely convert config values to boolean (handles "false" string vs false boolean)
+function Convert-ToBool {
+    param($Value)
+    if ($Value -is [bool]) { return $Value }
+    if ([string]::IsNullOrWhiteSpace($Value)) { return $false }
+    try { return [System.Convert]::ToBoolean($Value) } catch { return $false }
+}
+
+$Script:UseVelopack = Convert-ToBool $config.UseVelopack
+$Script:RemoveCreateDump = Convert-ToBool $config.RemoveCreateDump
+$Script:RemoveXmlFiles = Convert-ToBool $config.RemoveXmlFiles
 
 # Package naming and markers
 $Script:PortableMarkerFile = "$($Script:PackageTitle.ToLower()).portable"
@@ -318,8 +343,8 @@ function Test-ConfigurationValidity {
     $solutionPath = $Script:SolutionFile
     if (Test-Path $solutionPath) {
         $solutionInfo = Get-Item $solutionPath
-        if ($solutionInfo.Extension -ne ".sln") {
-            $warnings += "Solution file '$solutionPath' does not have .sln extension."
+        if ($solutionInfo.Extension -ne ".sln" -and $solutionInfo.Extension -ne ".slnx") {
+            $warnings += "Solution file '$solutionPath' does not have .sln or .slnx extension."
         }
         Write-Log "Solution file found: $($Script:SolutionFile)" "DEBUG"
     }

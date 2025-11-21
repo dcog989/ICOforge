@@ -134,8 +134,7 @@ function Invoke-MenuResponse {
             Read-Host "ENTER to continue"
         }
         "PauseBriefly" {
-            Write-Host "Returning to menu..." -ForegroundColor DarkGray
-            Start-Sleep -Seconds 3
+            Invoke-Countdown -Seconds 3 -Message "Returning to menu"
         }
         "NoPause" {
             # No action needed

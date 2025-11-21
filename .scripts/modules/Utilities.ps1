@@ -1,5 +1,19 @@
 # Builder Toolbox - Utility Functions
 
+function Invoke-Countdown {
+    param(
+        [int]$Seconds = 3,
+        [string]$Message = "Returning to menu"
+    )
+
+    Write-Host "$Message" -NoNewline -ForegroundColor DarkGray
+    for ($i = 0; $i -lt $Seconds; $i++) {
+        Write-Host "." -NoNewline -ForegroundColor DarkGray
+        Start-Sleep -Seconds 1
+    }
+    Write-Host ""
+}
+
 function Test-Prerequisites {
     $dotNetCheck = Test-DotNetVersion
     if (-not $dotNetCheck.Success) {
@@ -20,7 +34,9 @@ function Test-Prerequisites {
             Write-Log "Velopack tool 'vpk' installed successfully." "SUCCESS"
         }
         else {
-            $vpkVersionOutput = (vpk --version 2>&1).Trim()
+            # vpk --version 2>&1 produces ErrorRecords if output goes to stderr (common in PS with native tools)
+            # Pipe to Out-String to force conversion to string before trimming.
+            $vpkVersionOutput = (vpk --version 2>&1 | Out-String).Trim()
             Write-Log "Velopack version: $vpkVersionOutput" "DEBUG"
         }
     }
@@ -351,7 +367,6 @@ function Invoke-ItemSafely {
 
     if (-not (Test-Path $Path)) {
         Write-Log "Could not find $ItemType at '$Path'." "ERROR"
-        Write-Host "Could not find $ItemType at '$Path'." -ForegroundColor Red
         return $false
     }
     else {
@@ -361,7 +376,6 @@ function Invoke-ItemSafely {
         }
         catch {
             Write-Log "Failed to open $ItemType at '$Path': $_" "ERROR"
-            Write-Host "Failed to open $ItemType at '$Path'." -ForegroundColor Red
             return $false
         }
     }
